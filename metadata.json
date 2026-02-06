@@ -1,0 +1,8 @@
+
+{
+  "name": "Dstars Premium Fitness",
+  "description": "A high-end, conversion-focused gym platform redesign with minimal aesthetic and AI-powered fitness concierge.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
