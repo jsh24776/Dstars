@@ -15,7 +15,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin, onBa
     <AuthLayout 
       title="Join the Elite." 
       subtitle="Complete your application to begin your journey with Dstars."
-      image="https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=1200"
+      image="/imgs/back.jpg"
     >
       <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); onRegister(); }}>
         <div className="grid grid-cols-2 gap-4">
@@ -70,7 +70,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin, onBa
             I agree to the Terms of Service and Privacy Policy. I understand that my membership application is subject to review.
           </label>
         </div>
-        <Button size="lg" className="w-full py-4 mt-4">Create Account</Button>
+        <Button size="lg" className="w-full py-5" style={{ backgroundColor: 'rgb(127, 127, 127)' }}>Create Account</Button>
         <div className="text-center pt-4">
           <p className="text-zinc-500 text-sm">
             Already a member? {' '}
