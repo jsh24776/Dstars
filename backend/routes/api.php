@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\VerificationController;
 use App\Http\Controllers\Api\Members\MemberRegisterController;
+use App\Http\Controllers\Api\Members\MemberCardController;
+use App\Http\Controllers\Api\Members\MemberValidationController;
 use App\Http\Controllers\Api\Members\MemberVerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,4 +37,9 @@ Route::prefix('members')->group(function () {
         ->middleware('throttle:member-verify');
     Route::post('/resend-code', [MemberVerificationController::class, 'resend'])
         ->middleware('throttle:member-resend');
+    Route::get('/{member}/virtual-card', [MemberCardController::class, 'download'])
+        ->middleware(['member.token', 'throttle:member-card']);
+    Route::get('/{member}/validate', MemberValidationController::class)
+        ->middleware(['signed', 'throttle:member-validate'])
+        ->name('members.validate');
 });

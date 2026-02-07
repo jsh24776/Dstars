@@ -7,13 +7,15 @@ use App\Http\Requests\Members\ResendMemberCodeRequest;
 use App\Http\Requests\Members\VerifyMemberRequest;
 use App\Http\Resources\MemberResource;
 use App\Models\Member;
+use App\Services\Members\MemberAccessService;
 use App\Services\Members\MemberVerificationService;
 use Illuminate\Http\JsonResponse;
 
 class MemberVerificationController extends ApiController
 {
     public function __construct(
-        protected MemberVerificationService $verificationService
+        protected MemberVerificationService $verificationService,
+        protected MemberAccessService $accessService
     ) {
     }
 
@@ -29,6 +31,7 @@ class MemberVerificationController extends ApiController
         if ($member->is_verified) {
             return $this->success([
                 'member' => new MemberResource($member),
+                'download_token' => $this->accessService->issueDownloadToken($member),
             ], 'Email already verified.');
         }
 
@@ -38,8 +41,11 @@ class MemberVerificationController extends ApiController
             return $this->error('Invalid or expired verification code.', 422);
         }
 
+        $downloadToken = $this->accessService->issueDownloadToken($member);
+
         return $this->success([
             'member' => new MemberResource($member->refresh()),
+            'download_token' => $downloadToken,
         ], 'Email verified successfully.');
     }
 

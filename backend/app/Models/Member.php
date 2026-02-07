@@ -18,8 +18,12 @@ class Member extends Model
         'full_name',
         'email',
         'phone',
+        'membership_id',
         'verification_code',
         'verification_expires_at',
+        'download_token_hash',
+        'download_token_expires_at',
+        'virtual_card_path',
         'is_verified',
     ];
 
@@ -32,6 +36,7 @@ class Member extends Model
     {
         return [
             'verification_expires_at' => 'datetime',
+            'download_token_expires_at' => 'datetime',
             'is_verified' => 'boolean',
         ];
     }

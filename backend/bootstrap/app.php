@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'member.token' => \App\Http\Middleware\EnsureMemberToken::class,
         ]);
 
         $middleware->appendToGroup('api', [

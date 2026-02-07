@@ -22,9 +22,18 @@ class MemberRegistrationService
                 'is_verified' => false,
             ]);
 
+            $member->forceFill([
+                'membership_id' => $this->formatMembershipId($member->id),
+            ])->save();
+
             $this->verificationService->issueCode($member, $cooldownKey, true);
 
             return $member;
         });
+    }
+
+    protected function formatMembershipId(int $id): string
+    {
+        return 'DSTARS-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
     }
 }

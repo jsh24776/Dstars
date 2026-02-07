@@ -19,6 +19,7 @@ class MemberResource extends JsonResource
             'full_name' => $this->full_name,
             'email' => $this->email,
             'phone' => $this->phone,
+            'membership_id' => $this->membership_id,
             'is_verified' => $this->is_verified,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

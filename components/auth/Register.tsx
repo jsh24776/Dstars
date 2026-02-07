@@ -31,7 +31,12 @@ const Register: React.FC<RegisterProps> = ({
   const [apiError, setApiError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'gcash' | 'maya'>('gcash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [memberId] = useState(() => `DST-${Math.floor(100000 + Math.random() * 900000)}`);
+  const [memberId, setMemberId] = useState(() => `DST-${Math.floor(100000 + Math.random() * 900000)}`);
+  const [memberApiId, setMemberApiId] = useState<number | null>(null);
+  const [memberMembershipId, setMemberMembershipId] = useState<string | null>(null);
+  const [memberDownloadToken, setMemberDownloadToken] = useState<string | null>(null);
+  const [isDownloadingId, setIsDownloadingId] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
   const verifyTimeoutRef = useRef<number | null>(null);
   const paymentTimeoutRef = useRef<number | null>(null);
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -193,6 +198,19 @@ const Register: React.FC<RegisterProps> = ({
         return;
       }
 
+      const member = payload?.data?.member;
+      const token = payload?.data?.download_token;
+      if (member?.id) {
+        setMemberApiId(member.id);
+      }
+      if (member?.membership_id) {
+        setMemberMembershipId(member.membership_id);
+        setMemberId(member.membership_id);
+      }
+      if (token) {
+        setMemberDownloadToken(token);
+      }
+
       setShowVerified(true);
       verifyTimeoutRef.current = window.setTimeout(() => {
         setIsVerifying(false);
@@ -314,6 +332,49 @@ const Register: React.FC<RegisterProps> = ({
       setIsProcessingPayment(false);
       setStep('success');
     }, 900);
+  };
+
+  const handleDownloadVirtualId = async () => {
+    if (isDownloadingId) return;
+    setDownloadError('');
+
+    if (!memberApiId || !memberDownloadToken) {
+      setDownloadError('Virtual ID is not ready yet. Please try again in a moment.');
+      return;
+    }
+
+    setIsDownloadingId(true);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/members/${memberApiId}/virtual-card`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/pdf',
+          Authorization: `Bearer ${memberDownloadToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setDownloadError(payload?.message || 'Unable to download your virtual ID.');
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const filename = memberMembershipId ? `DStars-Virtual-ID-${memberMembershipId}.pdf` : 'DStars-Virtual-ID.pdf';
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setDownloadError('Unable to download your virtual ID.');
+    } finally {
+      setIsDownloadingId(false);
+    }
   };
 
   const renderStepIndicator = () => {
@@ -815,20 +876,27 @@ const Register: React.FC<RegisterProps> = ({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Button
-            size="lg"
-            className="w-full py-5"
-            style={{ backgroundColor: 'rgb(127, 127, 127)' }}
-          >
-            Download Virtual ID
-          </Button>
-          <Button variant="outline" size="lg" className="w-full py-5" onClick={onBackToLanding}>
-            Return to Homepage
-          </Button>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Button
+          size="lg"
+          className="w-full py-5"
+          style={{ backgroundColor: 'rgb(127, 127, 127)' }}
+          onClick={handleDownloadVirtualId}
+          disabled={isDownloadingId}
+        >
+          {isDownloadingId ? 'Preparing...' : 'Download Virtual ID'}
+        </Button>
+        <Button variant="outline" size="lg" className="w-full py-5" onClick={onBackToLanding}>
+          Return to Homepage
+        </Button>
       </div>
-    );
+      {downloadError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {downloadError}
+        </div>
+      )}
+    </div>
+  );
   };
 
   const headerTitle = {
