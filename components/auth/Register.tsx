@@ -25,13 +25,17 @@ const Register: React.FC<RegisterProps> = ({
   const [verificationCode, setVerificationCode] = useState<string[]>(['', '', '', '', '', '']);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showVerified, setShowVerified] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [apiError, setApiError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'gcash' | 'maya'>('gcash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [isTransitioningToId, setIsTransitioningToId] = useState(false);
   const [memberId] = useState(() => `DST-${Math.floor(100000 + Math.random() * 900000)}`);
   const verifyTimeoutRef = useRef<number | null>(null);
   const paymentTimeoutRef = useRef<number | null>(null);
-  const transitionTimeoutRef = useRef<number | null>(null);
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const apiBaseUrl = (import.meta as ImportMeta).env.VITE_API_BASE_URL ?? '';
   const qrMatrix = useMemo(() => {
     const size = 21;
     const matrix: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
@@ -99,9 +103,16 @@ const Register: React.FC<RegisterProps> = ({
     return () => {
       if (verifyTimeoutRef.current) window.clearTimeout(verifyTimeoutRef.current);
       if (paymentTimeoutRef.current) window.clearTimeout(paymentTimeoutRef.current);
-      if (transitionTimeoutRef.current) window.clearTimeout(transitionTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [resendCooldown]);
 
   const selectedPlan = useMemo(
     () => PRICING_PLANS.find((plan) => plan.id === planId) ?? PRICING_PLANS[0],
@@ -118,22 +129,182 @@ const Register: React.FC<RegisterProps> = ({
   const totalValue = priceValue + taxValue;
   const formattedPrice = (value: number) => value.toLocaleString('en-PH');
 
-  const handleDetailsSubmit = (event: React.FormEvent) => {
+  const handleDetailsSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setStep('verify');
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    setApiError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/members/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({
+          full_name: fullName,
+          email,
+          phone
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setApiError(payload?.message || 'Registration failed.');
+        return;
+      }
+
+      setStep('verify');
+    } catch (error) {
+      setApiError('Unable to connect to the server.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (isVerifying) return;
+    if (verificationCode.join('').length < 6) return;
     setIsVerifying(true);
     setShowVerified(false);
-    verifyTimeoutRef.current = window.setTimeout(() => {
+    setApiError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/members/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({
+          email,
+          code: verificationCode.join('')
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setApiError(payload?.message || 'Invalid verification code.');
+        setIsVerifying(false);
+        return;
+      }
+
       setShowVerified(true);
       verifyTimeoutRef.current = window.setTimeout(() => {
         setIsVerifying(false);
         setStep('invoice');
       }, 600);
-    }, 800);
+    } catch (error) {
+      setApiError('Unable to connect to the server.');
+      setIsVerifying(false);
+    }
+  };
+
+  const setOtpDigit = (index: number, value: string) => {
+    setVerificationCode((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const focusOtp = (index: number) => {
+    const target = otpInputRefs.current[index];
+    if (target) target.focus();
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    const sanitized = value.replace(/[^0-9]/g, '');
+    if (!sanitized) {
+      setOtpDigit(index, '');
+      return;
+    }
+
+    if (sanitized.length === 1) {
+      setOtpDigit(index, sanitized);
+      if (index < verificationCode.length - 1) {
+        focusOtp(index + 1);
+      }
+      return;
+    }
+
+    const chars = sanitized.slice(0, verificationCode.length - index).split('');
+    setVerificationCode((prev) => {
+      const next = [...prev];
+      chars.forEach((digit, offset) => {
+        next[index + offset] = digit;
+      });
+      return next;
+    });
+
+    const nextIndex = Math.min(index + chars.length, verificationCode.length - 1);
+    focusOtp(nextIndex);
+  };
+
+  const handleOtpKeyDown = (index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Backspace') return;
+
+    if (verificationCode[index]) {
+      setOtpDigit(index, '');
+      return;
+    }
+
+    if (index > 0) {
+      focusOtp(index - 1);
+      setOtpDigit(index - 1, '');
+    }
+  };
+
+  const handleOtpPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pasted = event.clipboardData.getData('text').replace(/[^0-9]/g, '');
+    if (!pasted) return;
+
+    const chars = pasted.slice(0, verificationCode.length).split('');
+    setVerificationCode((prev) => {
+      const next = [...prev];
+      chars.forEach((digit, index) => {
+        next[index] = digit;
+      });
+      return next;
+    });
+
+    const lastIndex = Math.min(chars.length - 1, verificationCode.length - 1);
+    focusOtp(Math.max(lastIndex, 0));
+  };
+
+  const handleResendCode = async () => {
+    if (isResending || resendCooldown > 0) return;
+    setIsResending(true);
+    setApiError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/members/resend-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setApiError(payload?.message || 'Unable to resend code.');
+        return;
+      }
+
+      setResendCooldown(60);
+    } catch (error) {
+      setApiError('Unable to connect to the server.');
+    } finally {
+      setIsResending(false);
+    }
   };
 
   const handlePayment = () => {
@@ -142,11 +313,6 @@ const Register: React.FC<RegisterProps> = ({
     paymentTimeoutRef.current = window.setTimeout(() => {
       setIsProcessingPayment(false);
       setStep('success');
-      setIsTransitioningToId(true);
-      transitionTimeoutRef.current = window.setTimeout(() => {
-        setIsTransitioningToId(false);
-        setStep('member-id');
-      }, 1400);
     }, 900);
   };
 
@@ -231,6 +397,11 @@ const Register: React.FC<RegisterProps> = ({
           required
         />
       </div>
+      {apiError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {apiError}
+        </div>
+      )}
       <div className="space-y-3">
         <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Selected Membership Plan</label>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -266,8 +437,13 @@ const Register: React.FC<RegisterProps> = ({
           })}
         </div>
       </div>
-      <Button size="lg" className="w-full py-5" style={{ backgroundColor: 'rgb(127, 127, 127)' }}>
-        Continue
+      <Button
+        size="lg"
+        className="w-full py-5"
+        style={{ backgroundColor: 'rgb(127, 127, 127)' }}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? 'Submitting...' : 'Continue'}
       </Button>
       <div className="text-center pt-2">
         <p className="text-zinc-500 text-sm">
@@ -301,13 +477,16 @@ const Register: React.FC<RegisterProps> = ({
               key={index}
               type="text"
               inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]*"
               maxLength={1}
               value={digit}
-              onChange={(event) => {
-                const value = event.target.value.replace(/[^0-9]/g, '');
-                const updated = [...verificationCode];
-                updated[index] = value;
-                setVerificationCode(updated);
+              onChange={(event) => handleOtpChange(index, event.target.value)}
+              onKeyDown={(event) => handleOtpKeyDown(index, event)}
+              onPaste={handleOtpPaste}
+              onFocus={(event) => event.currentTarget.select()}
+              ref={(el) => {
+                otpInputRefs.current[index] = el;
               }}
               className="w-full h-12 text-center text-lg font-semibold rounded-xl border border-zinc-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
@@ -315,11 +494,21 @@ const Register: React.FC<RegisterProps> = ({
         </div>
         <div className="flex items-center justify-between text-xs text-zinc-500">
           <span>Didn't receive the code?</span>
-          <button type="button" className="text-primary font-semibold hover:underline">
-            Resend code
+          <button
+            type="button"
+            className="text-primary font-semibold hover:underline disabled:text-zinc-300"
+            onClick={handleResendCode}
+            disabled={isResending || resendCooldown > 0 || !email}
+          >
+            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : isResending ? 'Sending...' : 'Resend code'}
           </button>
         </div>
       </div>
+      {apiError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {apiError}
+        </div>
+      )}
       <div className="space-y-3">
         <Button
           size="lg"
@@ -537,15 +726,15 @@ const Register: React.FC<RegisterProps> = ({
           >
             Download Receipt
           </Button>
-          <Button variant="outline" size="lg" className="w-full py-5" onClick={onBackToLanding}>
-            Return to Home
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full py-5"
+            onClick={() => setStep('member-id')}
+          >
+            View Virtual ID
           </Button>
         </div>
-        {isTransitioningToId && (
-          <div className="flex items-center justify-center gap-3 text-sm text-zinc-500 font-semibold">
-            Preparing your Virtual ID...
-          </div>
-        )}
       </div>
     );
   };
@@ -633,15 +822,6 @@ const Register: React.FC<RegisterProps> = ({
             style={{ backgroundColor: 'rgb(127, 127, 127)' }}
           >
             Download Virtual ID
-          </Button>
-          <Button variant="outline" size="lg" className="w-full py-5">
-            Save to Phone
-          </Button>
-          <Button variant="outline" size="lg" className="w-full py-5">
-            Add to Apple Wallet
-          </Button>
-          <Button variant="outline" size="lg" className="w-full py-5">
-            Add to Google Wallet
           </Button>
           <Button variant="outline" size="lg" className="w-full py-5" onClick={onBackToLanding}>
             Return to Homepage
