@@ -17,7 +17,7 @@ const Register: React.FC<RegisterProps> = ({
   onBackToLanding,
   preselectedPlanId
 }) => {
-  const [step, setStep] = useState<'details' | 'verify' | 'invoice' | 'success'>('details');
+  const [step, setStep] = useState<'details' | 'verify' | 'invoice' | 'success' | 'member-id'>('details');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -27,8 +27,67 @@ const Register: React.FC<RegisterProps> = ({
   const [showVerified, setShowVerified] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'gcash' | 'maya'>('gcash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isTransitioningToId, setIsTransitioningToId] = useState(false);
+  const [memberId] = useState(() => `DST-${Math.floor(100000 + Math.random() * 900000)}`);
   const verifyTimeoutRef = useRef<number | null>(null);
   const paymentTimeoutRef = useRef<number | null>(null);
+  const transitionTimeoutRef = useRef<number | null>(null);
+  const qrMatrix = useMemo(() => {
+    const size = 21;
+    const matrix: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
+
+    const placeFinder = (ox: number, oy: number) => {
+      for (let y = 0; y < 7; y += 1) {
+        for (let x = 0; x < 7; x += 1) {
+          const isBorder = x === 0 || y === 0 || x === 6 || y === 6;
+          const isCenter = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+          if (isBorder || isCenter) {
+            matrix[oy + y][ox + x] = true;
+          }
+        }
+      }
+    };
+
+    placeFinder(0, 0);
+    placeFinder(size - 7, 0);
+    placeFinder(0, size - 7);
+
+    for (let i = 8; i < size - 8; i += 1) {
+      matrix[6][i] = i % 2 === 0;
+      matrix[i][6] = i % 2 === 0;
+    }
+
+    const hash = (input: string) => {
+      let value = 5381;
+      for (let i = 0; i < input.length; i += 1) {
+        value = ((value << 5) + value) ^ input.charCodeAt(i);
+      }
+      return value >>> 0;
+    };
+
+    let seed = hash(memberId);
+    const nextBit = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) & 1;
+    };
+
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const inFinder =
+          (x < 7 && y < 7) ||
+          (x >= size - 7 && y < 7) ||
+          (x < 7 && y >= size - 7);
+        const inTiming = x === 6 || y === 6;
+        if (!inFinder && !inTiming) {
+          matrix[y][x] = nextBit() === 1;
+        }
+      }
+    }
+
+    return matrix;
+  }, [memberId]);
 
   useEffect(() => {
     if (preselectedPlanId) {
@@ -40,6 +99,7 @@ const Register: React.FC<RegisterProps> = ({
     return () => {
       if (verifyTimeoutRef.current) window.clearTimeout(verifyTimeoutRef.current);
       if (paymentTimeoutRef.current) window.clearTimeout(paymentTimeoutRef.current);
+      if (transitionTimeoutRef.current) window.clearTimeout(transitionTimeoutRef.current);
     };
   }, []);
 
@@ -82,6 +142,11 @@ const Register: React.FC<RegisterProps> = ({
     paymentTimeoutRef.current = window.setTimeout(() => {
       setIsProcessingPayment(false);
       setStep('success');
+      setIsTransitioningToId(true);
+      transitionTimeoutRef.current = window.setTimeout(() => {
+        setIsTransitioningToId(false);
+        setStep('member-id');
+      }, 1400);
     }, 900);
   };
 
@@ -90,7 +155,8 @@ const Register: React.FC<RegisterProps> = ({
       { id: 'details', label: 'Details' },
       { id: 'verify', label: 'Verify' },
       { id: 'invoice', label: 'Invoice' },
-      { id: 'success', label: 'Receipt' }
+      { id: 'success', label: 'Receipt' },
+      { id: 'member-id', label: 'Member ID' }
     ];
 
     return (
@@ -475,6 +541,112 @@ const Register: React.FC<RegisterProps> = ({
             Return to Home
           </Button>
         </div>
+        {isTransitioningToId && (
+          <div className="flex items-center justify-center gap-3 text-sm text-zinc-500 font-semibold">
+            Preparing your Virtual ID...
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderMemberIdStep = () => {
+    const startDate = new Date();
+    const expiryDate = new Date();
+    expiryDate.setFullYear(startDate.getFullYear() + 1);
+
+    const formatDate = (value: Date) =>
+      value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    return (
+      <div className="space-y-8">
+        <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-6 text-center">
+          <div className="mx-auto h-12 w-12 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-xs font-bold tracking-widest">
+            ACTIVE
+          </div>
+          <h3 className="mt-4 text-2xl font-bold text-zinc-900">
+            Welcome to DStars Gym - Your Membership is Now Active.
+          </h3>
+          <p className="text-sm text-zinc-500 mt-2">
+            Present your virtual ID at the front desk to access the gym.
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Virtual Member ID</p>
+              <h4 className="text-xl font-bold text-zinc-900">{fullName || 'Member Name'}</h4>
+              <p className="text-xs text-zinc-500 mt-1">{selectedPlan?.name} Plan</p>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-extrabold tracking-tight text-zinc-900">
+                DSTARS<span className="text-primary">.</span>
+              </div>
+              <p className="text-xs text-zinc-400">Premium Fitness</p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-[1.4fr_0.6fr] gap-6">
+            <div className="space-y-3 text-sm text-zinc-600">
+              <div className="flex items-center justify-between">
+                <span>Member ID</span>
+                <span className="font-semibold text-zinc-900">{memberId}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Start Date</span>
+                <span>{formatDate(startDate)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Expiry Date</span>
+                <span>{formatDate(expiryDate)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Access Level</span>
+                <span>{selectedPlan?.name}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4">
+              <div className="rounded-xl bg-white p-3 shadow-sm border border-zinc-100">
+                <svg viewBox="0 0 21 21" className="h-24 w-24 text-zinc-900" shapeRendering="crispEdges">
+                  <rect x="0" y="0" width="21" height="21" fill="white" />
+                  {qrMatrix.map((row, y) =>
+                    row.map((isOn, x) =>
+                      isOn ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill="black" /> : null
+                    )
+                  )}
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-6 text-xs text-zinc-500">
+            Present this Virtual ID at the front desk to access the gym.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Button
+            size="lg"
+            className="w-full py-5"
+            style={{ backgroundColor: 'rgb(127, 127, 127)' }}
+          >
+            Download Virtual ID
+          </Button>
+          <Button variant="outline" size="lg" className="w-full py-5">
+            Save to Phone
+          </Button>
+          <Button variant="outline" size="lg" className="w-full py-5">
+            Add to Apple Wallet
+          </Button>
+          <Button variant="outline" size="lg" className="w-full py-5">
+            Add to Google Wallet
+          </Button>
+          <Button variant="outline" size="lg" className="w-full py-5" onClick={onBackToLanding}>
+            Return to Homepage
+          </Button>
+        </div>
       </div>
     );
   };
@@ -483,14 +655,16 @@ const Register: React.FC<RegisterProps> = ({
     details: 'Join the Elite.',
     verify: 'Confirm your email.',
     invoice: 'Review your invoice.',
-    success: 'Membership activated.'
+    success: 'Membership activated.',
+    'member-id': 'Your virtual member ID.'
   }[step];
 
   const headerSubtitle = {
     details: 'Complete your membership request in under a minute.',
     verify: 'Enter the code we sent to secure your membership.',
     invoice: 'Finalize your membership with a secure payment.',
-    success: 'A receipt has been issued for your records.'
+    success: 'A receipt has been issued for your records.',
+    'member-id': 'Your digital access pass is ready.'
   }[step];
 
   return (
@@ -506,6 +680,7 @@ const Register: React.FC<RegisterProps> = ({
         {step === 'verify' && renderVerifyStep()}
         {step === 'invoice' && renderInvoiceStep()}
         {step === 'success' && renderSuccessStep()}
+        {step === 'member-id' && renderMemberIdStep()}
       </div>
       <style>{`
         @keyframes fadeIn {
