@@ -21,6 +21,7 @@ type DashboardTab = 'overview' | 'members' | 'trainers' | 'schedule';
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('landing');
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const navigateTo = (view: View) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -65,19 +66,23 @@ const App: React.FC = () => {
         onRegister={() => navigateTo('dashboard')} 
         onNavigateToLogin={() => navigateTo('login')}
         onBackToLanding={() => navigateTo('landing')}
+        preselectedPlanId={selectedPlanId}
       />
     );
   }
 
   return (
     <div className="min-h-screen bg-white selection:bg-primary selection:text-white font-inter">
-      <Navbar onNavigate={(v) => navigateTo(v as View)} />
+      <Navbar onNavigate={(v) => { 
+        if (v === 'register') setSelectedPlanId(null);
+        navigateTo(v as View); 
+      }} />
       <main>
-        <Hero />
+        <Hero onJoin={() => { setSelectedPlanId(null); navigateTo('register'); }} />
         <Programs />
         <AIConcierge />
         <Trainers />
-        <Pricing />
+        <Pricing onJoin={(planId) => { setSelectedPlanId(planId); navigateTo('register'); }} />
         
         {/* Call to Action Section */}
         <section className="py-24 bg-white">
@@ -98,7 +103,7 @@ const App: React.FC = () => {
                 </p>
                 <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                   <button 
-                    onClick={() => navigateTo('register')}
+                    onClick={() => { setSelectedPlanId(null); navigateTo('register'); }}
                     className="bg-primary text-white px-10 py-5 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-xl shadow-primary/20"
                   >
                     Apply for Membership

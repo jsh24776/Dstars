@@ -2,7 +2,11 @@
 import React from 'react';
 import Button from './Button';
 
-const Hero: React.FC = () => {
+interface HeroProps {
+  onJoin?: () => void;
+}
+
+const Hero: React.FC<HeroProps> = ({ onJoin }) => {
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden pt-20">
       {/* Background with subtle overlay */}
@@ -25,7 +29,7 @@ const Hero: React.FC = () => {
             A sanctuary for high-performance training. Experience the fusion of elite biomechanics and premium architectural design.
           </p>
           <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-            <Button size="lg" className="px-10">Start Your Journey</Button>
+            <Button size="lg" className="px-10" onClick={onJoin}>Start Your Journey</Button>
             <Button variant="outline" size="lg" className="bg-white text-black border-white hover:bg-white hover:text-black">
               Virtual Tour
             </Button>

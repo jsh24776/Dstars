@@ -14,7 +14,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateToRegister, onBackToLa
 
   return (
     <AuthLayout 
-      title="Welcome back."
+      title="Welcome back."  
       subtitle="Enter your credentials to access your performance dashboard."
       image="/imgs/barb.jpg"
     >
@@ -53,7 +53,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateToRegister, onBackToLa
           <input type="checkbox" id="remember" className="w-4 h-4 border-zinc-200 rounded text-primary focus:ring-primary" />
           <label htmlFor="remember" className="text-sm text-zinc-500">Remember me for 30 days</label>
         </div>
-        <Button size="lg" className="w-full py-5" style={{ backgroundColor: 'rgb(127, 127, 127)' }}>Sign In</Button>
+        <Button size="lg" className="w-full py-5">Sign In</Button>
         <div className="text-center pt-4">
           <p className="text-zinc-500 text-sm">
             Don't have an account? {' '}

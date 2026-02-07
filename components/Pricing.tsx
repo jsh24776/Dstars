@@ -3,7 +3,11 @@ import React from 'react';
 import { PRICING_PLANS } from '../constants.tsx';
 import Button from './Button';
 
-const Pricing: React.FC = () => {
+interface PricingProps {
+  onJoin?: (planId: string) => void;
+}
+
+const Pricing: React.FC<PricingProps> = ({ onJoin }) => {
   return (
     <section id="pricing" className="py-24 md:py-32 bg-zinc-50">
       <div className="container mx-auto px-6 md:px-12 text-center">
@@ -21,9 +25,10 @@ const Pricing: React.FC = () => {
               key={plan.id} 
               className={`relative flex flex-col p-10 rounded-3xl transition-all duration-300 ${
                 plan.recommended 
-                  ? 'bg-zinc-900 text-white shadow-2xl scale-105 z-10' 
+                  ? 'text-white shadow-2xl scale-105 z-10' 
                   : 'bg-white text-zinc-900 border border-zinc-100 hover:shadow-lg'
               }`}
+              style={plan.recommended ? { backgroundColor: 'rgb(127, 127, 127)' } : {}}
             >
               {plan.recommended && (
                 <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-bold uppercase tracking-widest px-4 py-1 rounded-full">
@@ -51,6 +56,7 @@ const Pricing: React.FC = () => {
               <Button 
                 variant={plan.recommended ? 'primary' : 'outline'} 
                 className="w-full"
+                onClick={() => onJoin?.(plan.id)}
               >
                 Get Started
               </Button>
