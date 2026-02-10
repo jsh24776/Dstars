@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\Members\MemberVerificationController;
 use App\Http\Controllers\Api\Admin\MemberController as AdminMemberController;
 use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Api\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Api\Invoices\InvoiceController as InvoiceController;
 use App\Http\Controllers\Api\Payments\PaymentController as PaymentController;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +46,10 @@ Route::prefix('v1')->group(function () {
             Route::delete('/members/{member}', [AdminMemberController::class, 'destroy']);
             Route::get('/invoices', [AdminInvoiceController::class, 'index']);
             Route::get('/payments', [AdminPaymentController::class, 'index']);
+            Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show']);
+            Route::patch('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel']);
+            Route::get('/payments/{payment}', [AdminPaymentController::class, 'show']);
+            Route::get('/finance-summary', [AdminFinanceController::class, 'summary']);
         });
 });
 

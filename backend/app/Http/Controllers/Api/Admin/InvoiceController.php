@@ -3,43 +3,45 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\ApiController;
+use App\Http\Requests\Admin\Invoices\CancelInvoiceRequest;
 use App\Http\Requests\Admin\Invoices\IndexInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
 use App\Models\Invoice;
+use App\Services\Admin\InvoiceService;
+use Illuminate\Http\JsonResponse;
 
 class InvoiceController extends ApiController
 {
+    public function __construct(protected InvoiceService $service)
+    {
+    }
+
     public function index(IndexInvoiceRequest $request)
     {
-        $validated = $request->validated();
+        $invoices = $this->service->paginate($request->validated());
 
-        $query = Invoice::query()->with('member');
+        return InvoiceResource::collection($invoices);
+    }
 
-        if (! empty($validated['member_id'])) {
-            $query->where('member_id', $validated['member_id']);
+    public function show(Invoice $invoice): JsonResponse
+    {
+        return $this->success([
+            'invoice' => new InvoiceResource($invoice->load(['member', 'payment'])),
+        ]);
+    }
+
+    public function cancel(CancelInvoiceRequest $request, Invoice $invoice): JsonResponse
+    {
+        $request->validated();
+
+        try {
+            $invoice = $this->service->cancel($invoice);
+        } catch (\RuntimeException $exception) {
+            return $this->error($exception->getMessage(), 422);
         }
 
-        if (! empty($validated['status'])) {
-            $query->where('status', $validated['status']);
-        }
-
-        if (! empty($validated['issued_from'])) {
-            $query->whereDate('issued_at', '>=', $validated['issued_from']);
-        }
-
-        if (! empty($validated['issued_to'])) {
-            $query->whereDate('issued_at', '<=', $validated['issued_to']);
-        }
-
-        $sortBy = $validated['sort_by'] ?? 'issued_at';
-        $sortDir = $validated['sort_dir'] ?? 'desc';
-
-        $query->orderBy($sortBy, $sortDir);
-
-        $perPage = $validated['per_page'] ?? 15;
-
-        return InvoiceResource::collection(
-            $query->paginate($perPage)
-        );
+        return $this->success([
+            'invoice' => new InvoiceResource($invoice->load(['member', 'payment'])),
+        ], 'Invoice cancelled.');
     }
 }

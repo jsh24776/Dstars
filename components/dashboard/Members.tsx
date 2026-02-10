@@ -341,7 +341,7 @@ const Members: React.FC = () => {
                     {new Date(member.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-8 py-6">
-                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center space-x-2">
                       <button className="p-2 hover:bg-white hover:shadow-sm border border-transparent hover:border-zinc-200 rounded-xl text-zinc-400 hover:text-zinc-900 transition-all">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
