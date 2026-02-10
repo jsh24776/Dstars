@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Programs from './components/Programs';
@@ -10,31 +10,96 @@ import Footer from './components/Footer';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import DashboardLayout from './components/dashboard/DashboardLayout';
-import Overview from './components/dashboard/Overview';
+import Dashboard from './components/dashboard/Dashboard';
 import Members from './components/dashboard/Members';
-import TrainersAdmin from './components/dashboard/TrainersAdmin';
-import Schedule from './components/dashboard/Schedule';
+import MembershipPlans from './components/dashboard/MembershipPlans';
+import Invoices from './components/dashboard/Invoices';
+import Payments from './components/dashboard/Payments';
+import Attendance from './components/dashboard/Attendance';
 
 type View = 'landing' | 'login' | 'register' | 'dashboard';
-type DashboardTab = 'overview' | 'members' | 'trainers' | 'schedule';
+type DashboardTab = 'dashboard' | 'members' | 'plans' | 'invoices' | 'payments' | 'attendance';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('landing');
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('dashboard');
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+
+  const getCookie = (name: string) => {
+    const match = document.cookie.match(new RegExp(`(^|;\\s*)${name}=([^;]*)`));
+    return match ? decodeURIComponent(match[2]) : '';
+  };
+
+  const logoutAdmin = async () => {
+    const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+    try {
+      await fetch(`${baseUrl}/sanctum/csrf-cookie`, { credentials: 'include' });
+      const xsrfToken = getCookie('XSRF-TOKEN');
+
+      await fetch(`${baseUrl}/admin/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}),
+        },
+      });
+    } catch {
+      // Ignore logout failures; we still clear local state.
+    }
+  };
 
   const navigateTo = (view: View) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setCurrentView(view);
   };
 
+  useEffect(() => {
+    const checkSession = async () => {
+      const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+      try {
+        const response = await fetch(`${baseUrl}/admin/dashboard`, {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        });
+
+        if (response.ok) {
+          setCurrentView('dashboard');
+        }
+      } catch {
+        // Ignore bootstrapping errors.
+      } finally {
+        setIsBootstrapping(false);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  if (isBootstrapping) {
+    return (
+      <div className="min-h-screen bg-white font-inter flex items-center justify-center text-zinc-500 text-sm font-semibold">
+        Loading session...
+      </div>
+    );
+  }
+
   const renderDashboardContent = () => {
     switch (dashboardTab) {
-      case 'overview': return <Overview />;
+      case 'dashboard': return <Dashboard />;
       case 'members': return <Members />;
-      case 'trainers': return <TrainersAdmin />;
-      case 'schedule': return <Schedule />;
-      default: return <Overview />;
+      case 'plans': return <MembershipPlans />;
+      case 'invoices': return <Invoices />;
+      case 'payments': return <Payments />;
+      case 'attendance': return <Attendance />;
+      default: return <Dashboard />;
     }
   };
 
@@ -43,7 +108,10 @@ const App: React.FC = () => {
       <DashboardLayout 
         activeTab={dashboardTab} 
         onTabChange={(id) => setDashboardTab(id as DashboardTab)}
-        onLogout={() => navigateTo('landing')}
+        onLogout={async () => {
+          await logoutAdmin();
+          navigateTo('landing');
+        }}
       >
         {renderDashboardContent()}
       </DashboardLayout>

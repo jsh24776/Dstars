@@ -9,6 +9,11 @@ use App\Http\Controllers\Api\Members\MemberRegisterController;
 use App\Http\Controllers\Api\Members\MemberCardController;
 use App\Http\Controllers\Api\Members\MemberValidationController;
 use App\Http\Controllers\Api\Members\MemberVerificationController;
+use App\Http\Controllers\Api\Admin\MemberController as AdminMemberController;
+use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Api\Invoices\InvoiceController as InvoiceController;
+use App\Http\Controllers\Api\Payments\PaymentController as PaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -28,7 +33,27 @@ Route::prefix('v1')->group(function () {
 
     Route::get('/me', MeController::class)
         ->middleware(['auth:sanctum', 'verified']);
+
+    Route::prefix('admin')
+        ->middleware(['auth:sanctum', 'verified', 'admin', 'throttle:admin-members'])
+        ->group(function () {
+            Route::get('/members', [AdminMemberController::class, 'index']);
+            Route::post('/members', [AdminMemberController::class, 'store']);
+            Route::get('/members/{member}', [AdminMemberController::class, 'show']);
+            Route::match(['put', 'patch'], '/members/{member}', [AdminMemberController::class, 'update']);
+            Route::patch('/members/{member}/status', [AdminMemberController::class, 'updateStatus']);
+            Route::delete('/members/{member}', [AdminMemberController::class, 'destroy']);
+            Route::get('/invoices', [AdminInvoiceController::class, 'index']);
+            Route::get('/payments', [AdminPaymentController::class, 'index']);
+        });
 });
+
+Route::post('/invoices/create', [InvoiceController::class, 'store'])
+    ->middleware('throttle:member-invoice');
+Route::get('/members/{member}/invoice', [InvoiceController::class, 'showForMember'])
+    ->middleware('throttle:member-invoice');
+Route::post('/payments/record', [PaymentController::class, 'record'])
+    ->middleware('throttle:member-payment');
 
 Route::prefix('members')->group(function () {
     Route::post('/register', MemberRegisterController::class)

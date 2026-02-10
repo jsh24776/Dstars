@@ -2,6 +2,7 @@
 
 namespace App\Services\Members;
 
+use App\Models\MembershipPlan;
 use App\Models\Member;
 use Illuminate\Support\Facades\DB;
 
@@ -15,11 +16,18 @@ class MemberRegistrationService
     public function register(array $data, string $cooldownKey): Member
     {
         return DB::transaction(function () use ($data, $cooldownKey) {
+            $plan = MembershipPlan::where('slug', $data['plan_id'])->first();
+
+            if (! $plan) {
+                throw new \RuntimeException('Selected membership plan is invalid.');
+            }
+
             $member = Member::create([
                 'full_name' => $data['full_name'],
                 'email' => strtolower($data['email']),
                 'phone' => $data['phone'],
                 'is_verified' => false,
+                'membership_plan_id' => $plan->id,
             ]);
 
             $member->forceFill([

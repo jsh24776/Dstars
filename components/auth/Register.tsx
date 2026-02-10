@@ -33,6 +33,7 @@ const Register: React.FC<RegisterProps> = ({
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [memberId, setMemberId] = useState(() => `DST-${Math.floor(100000 + Math.random() * 900000)}`);
   const [memberApiId, setMemberApiId] = useState<number | null>(null);
+  const [memberInvoiceId, setMemberInvoiceId] = useState<number | null>(null);
   const [memberMembershipId, setMemberMembershipId] = useState<string | null>(null);
   const [memberDownloadToken, setMemberDownloadToken] = useState<string | null>(null);
   const [isDownloadingId, setIsDownloadingId] = useState(false);
@@ -151,7 +152,8 @@ const Register: React.FC<RegisterProps> = ({
         body: JSON.stringify({
           full_name: fullName,
           email,
-          phone
+          phone,
+          plan_id: planId
         })
       });
 
@@ -200,6 +202,7 @@ const Register: React.FC<RegisterProps> = ({
 
       const member = payload?.data?.member;
       const token = payload?.data?.download_token;
+      const invoice = payload?.data?.invoice;
       if (member?.id) {
         setMemberApiId(member.id);
       }
@@ -209,6 +212,9 @@ const Register: React.FC<RegisterProps> = ({
       }
       if (token) {
         setMemberDownloadToken(token);
+      }
+      if (invoice?.id) {
+        setMemberInvoiceId(invoice.id);
       }
 
       setShowVerified(true);
@@ -325,13 +331,69 @@ const Register: React.FC<RegisterProps> = ({
     }
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (isProcessingPayment) return;
     setIsProcessingPayment(true);
-    paymentTimeoutRef.current = window.setTimeout(() => {
+    setApiError('');
+
+    try {
+      let invoiceId = memberInvoiceId;
+
+      if (!invoiceId && memberApiId) {
+        const invoiceResponse = await fetch(`${apiBaseUrl}/api/members/${memberApiId}/invoice`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json'
+          }
+        });
+        const invoicePayload = await invoiceResponse.json().catch(() => null);
+        if (invoiceResponse.ok && invoicePayload?.data?.invoice?.id) {
+          invoiceId = invoicePayload.data.invoice.id;
+          setMemberInvoiceId(invoiceId);
+        }
+      }
+
+      if (!invoiceId) {
+        setApiError('Unable to locate your invoice. Please try again.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      if (!memberApiId) {
+        setApiError('Unable to confirm your membership. Please try again.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/payments/record`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({
+          invoice_id: invoiceId,
+          member_id: memberApiId,
+          payment_method: paymentMethod
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setApiError(payload?.message || 'Unable to record payment.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      paymentTimeoutRef.current = window.setTimeout(() => {
+        setIsProcessingPayment(false);
+        setStep('success');
+      }, 900);
+    } catch (error) {
+      setApiError('Unable to connect to the server.');
       setIsProcessingPayment(false);
-      setStep('success');
-    }, 900);
+    }
   };
 
   const handleDownloadVirtualId = async () => {

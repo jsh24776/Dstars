@@ -17,6 +17,7 @@ class RegisterMemberRequest extends FormRequest
             'full_name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'string', 'email:rfc,dns', 'max:190', 'unique:members,email'],
             'phone' => ['required', 'string', 'max:30'],
+            'plan_id' => ['required', 'string', 'max:120', 'exists:membership_plans,slug'],
         ];
     }
 
@@ -24,6 +25,7 @@ class RegisterMemberRequest extends FormRequest
     {
         return [
             'email.unique' => 'This email already exists.',
+            'plan_id.exists' => 'Selected membership plan is invalid.',
         ];
     }
 }
