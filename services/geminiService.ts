@@ -1,25 +1,38 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const DEFAULT_ERROR =
+  "I'm sorry, the AI concierge is temporarily unavailable. Please try again in a moment.";
 
-export const getFitnessRecommendation = async (userInput: string) => {
+export const getFitnessRecommendation = async (userInput: string): Promise<string> => {
+  const goal = userInput.trim();
+
+  if (!goal) {
+    return 'Please describe your fitness goal so I can help.';
+  }
+
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `User asks: "${userInput}". 
-      You are the Dstars AI Fitness Concierge. Dstars is a premium, minimal, high-end gym.
-      Recommend a membership or training path based on their goal. 
-      Keep it professional, encouraging, and succinct (max 2 sentences).`,
-      config: {
-        temperature: 0.7,
-        topP: 0.8,
-        maxOutputTokens: 100
-      }
+    const response = await fetch(`${API_BASE_URL}/api/ai-concierge`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ goal }),
     });
-    return response.text;
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    return "I'm sorry, I'm having trouble connecting to the concierge service. Please visit our front desk for assistance.";
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return 'Too many concierge requests. Please wait a moment and try again.';
+      }
+
+      return payload?.message || DEFAULT_ERROR;
+    }
+
+    return payload?.data?.recommendation || DEFAULT_ERROR;
+  } catch (_error) {
+    return DEFAULT_ERROR;
   }
 };

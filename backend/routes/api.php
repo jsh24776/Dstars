@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Auth\LogoutController;
 use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\VerificationController;
+use App\Http\Controllers\Api\AI\ConciergeController;
 use App\Http\Controllers\Api\Members\MemberRegisterController;
 use App\Http\Controllers\Api\Members\MemberCardController;
 use App\Http\Controllers\Api\Members\MemberValidationController;
@@ -59,6 +60,8 @@ Route::get('/members/{member}/invoice', [InvoiceController::class, 'showForMembe
     ->middleware('throttle:member-invoice');
 Route::post('/payments/record', [PaymentController::class, 'record'])
     ->middleware('throttle:member-payment');
+Route::post('/ai-concierge', ConciergeController::class)
+    ->middleware('throttle:ai-concierge');
 
 Route::prefix('members')->group(function () {
     Route::post('/register', MemberRegisterController::class)
