@@ -23,7 +23,12 @@ type DashboardTab = 'dashboard' | 'members' | 'plans' | 'invoices' | 'payments' 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('landing');
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('dashboard');
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(() => {
+    const raw = window.sessionStorage.getItem('selectedMembershipPlanId');
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? null : parsed;
+  });
   const [isBootstrapping, setIsBootstrapping] = useState(true);
 
   const getCookie = (name: string) => {
@@ -142,15 +147,26 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-white selection:bg-primary selection:text-white font-inter">
       <Navbar onNavigate={(v) => { 
-        if (v === 'register') setSelectedPlanId(null);
+        if (v === 'register') {
+          setSelectedPlanId(null);
+          window.sessionStorage.removeItem('selectedMembershipPlanId');
+        }
         navigateTo(v as View); 
       }} />
       <main>
-        <Hero onJoin={() => { setSelectedPlanId(null); navigateTo('register'); }} />
+        <Hero onJoin={() => {
+          setSelectedPlanId(null);
+          window.sessionStorage.removeItem('selectedMembershipPlanId');
+          navigateTo('register');
+        }} />
         <Programs />
         <AIConcierge />
         <Trainers />
-        <Pricing onJoin={(planId) => { setSelectedPlanId(planId); navigateTo('register'); }} />
+        <Pricing onJoin={(planId) => {
+          setSelectedPlanId(planId);
+          window.sessionStorage.setItem('selectedMembershipPlanId', String(planId));
+          navigateTo('register');
+        }} />
         
         {/* Call to Action Section */}
         <section className="py-24 bg-white">
@@ -171,7 +187,11 @@ const App: React.FC = () => {
                 </p>
                 <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                   <button 
-                    onClick={() => { setSelectedPlanId(null); navigateTo('register'); }}
+                    onClick={() => {
+                      setSelectedPlanId(null);
+                      window.sessionStorage.removeItem('selectedMembershipPlanId');
+                      navigateTo('register');
+                    }}
                     className="bg-primary text-white px-10 py-5 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-xl shadow-primary/20"
                   >
                     Apply for Membership

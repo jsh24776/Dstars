@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Members;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class RegisterMemberRequest extends FormRequest
 {
@@ -17,7 +18,11 @@ class RegisterMemberRequest extends FormRequest
             'full_name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'string', 'email:rfc,dns', 'max:190', 'unique:members,email'],
             'phone' => ['required', 'string', 'max:30'],
-            'plan_id' => ['required', 'string', 'max:120', 'exists:membership_plans,slug'],
+            'plan_id' => [
+                'required',
+                'integer',
+                Rule::exists('membership_plans', 'id')->where('status', 'active'),
+            ],
         ];
     }
 

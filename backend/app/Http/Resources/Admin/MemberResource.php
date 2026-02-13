@@ -33,7 +33,8 @@ class MemberResource extends JsonResource
                     'id' => $this->membershipPlan->id,
                     'name' => $this->membershipPlan->name,
                     'price' => $this->membershipPlan->price,
-                    'billing_cycle' => $this->membershipPlan->billing_cycle,
+                    'duration' => $this->membershipPlan->duration,
+                    'duration_count' => $this->membershipPlan->duration_count,
                 ];
             }),
             'created_at' => $this->created_at,

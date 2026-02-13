@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\VerificationController;
 use App\Http\Controllers\Api\AI\ConciergeController;
+use App\Http\Controllers\Api\MembershipPlans\MembershipPlanController as PublicMembershipPlanController;
 use App\Http\Controllers\Api\Members\MemberRegisterController;
 use App\Http\Controllers\Api\Members\MemberCardController;
 use App\Http\Controllers\Api\Members\MemberValidationController;
@@ -76,3 +77,6 @@ Route::prefix('members')->group(function () {
         ->middleware(['signed', 'throttle:member-validate'])
         ->name('members.validate');
 });
+
+Route::get('/membership-plans', [PublicMembershipPlanController::class, 'index'])
+    ->middleware('throttle:member-register');

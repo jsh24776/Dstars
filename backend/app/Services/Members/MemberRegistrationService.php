@@ -16,7 +16,10 @@ class MemberRegistrationService
     public function register(array $data, string $cooldownKey): Member
     {
         return DB::transaction(function () use ($data, $cooldownKey) {
-            $plan = MembershipPlan::where('slug', $data['plan_id'])->first();
+            $plan = MembershipPlan::query()
+                ->whereKey($data['plan_id'])
+                ->where('status', 'active')
+                ->first();
 
             if (! $plan) {
                 throw new \RuntimeException('Selected membership plan is invalid.');

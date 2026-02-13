@@ -14,12 +14,17 @@ export interface Trainer {
   bio: string;
 }
 
-export interface PricingPlan {
-  id: string;
+export interface MembershipPlan {
+  id: number;
   name: string;
-  price: string;
+  duration: string;
+  duration_count: number;
+  price: number;
+  status: 'active' | 'inactive' | string;
   features: string[];
-  recommended?: boolean;
+  description?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Testimonial {

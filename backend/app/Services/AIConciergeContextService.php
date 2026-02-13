@@ -31,15 +31,17 @@ class AIConciergeContextService
         try {
             return Cache::remember('ai_concierge_membership_plans', now()->addMinutes(5), function () {
                 return MembershipPlan::query()
-                    ->where('is_active', true)
+                    ->where('status', 'active')
                     ->orderBy('price')
-                    ->get(['name', 'slug', 'price', 'billing_cycle', 'description', 'features'])
+                    ->get(['id', 'name', 'duration', 'duration_count', 'slug', 'price', 'description', 'features'])
                     ->map(static function (MembershipPlan $plan): array {
                         return [
+                            'id' => $plan->id,
                             'name' => $plan->name,
                             'slug' => $plan->slug,
                             'price' => (string) $plan->price,
-                            'billing_cycle' => $plan->billing_cycle,
+                            'duration' => $plan->duration,
+                            'duration_count' => $plan->duration_count,
                             'description' => $plan->description,
                             'features' => $plan->features ?? [],
                         ];

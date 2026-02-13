@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\Auth\LoginController;
 use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Api\Admin\MembershipPlanController as AdminMembershipPlanController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\FinanceController as AdminFinanceController;
 use Illuminate\Support\Facades\Route;
@@ -35,4 +36,10 @@ Route::prefix('admin/api')
         Route::get('/payments', [AdminPaymentController::class, 'index']);
         Route::get('/payments/{payment}', [AdminPaymentController::class, 'show']);
         Route::get('/finance-summary', [AdminFinanceController::class, 'summary']);
+        Route::get('/membership-plans', [AdminMembershipPlanController::class, 'index']);
+        Route::post('/membership-plans', [AdminMembershipPlanController::class, 'store']);
+        Route::get('/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'show']);
+        Route::match(['put', 'patch'], '/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'update']);
+        Route::patch('/membership-plans/{membershipPlan}/status', [AdminMembershipPlanController::class, 'updateStatus']);
+        Route::delete('/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'destroy']);
     });

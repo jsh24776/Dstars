@@ -1,5 +1,5 @@
 
-import { Program, Trainer, PricingPlan, Testimonial } from './types';
+import { Program, Trainer, Testimonial } from './types';
 
 export const PROGRAMS: Program[] = [
   {
@@ -43,28 +43,6 @@ export const TRAINERS: Trainer[] = [
     specialty: 'Conditioning',
     bio: 'Globally known for one of the most influential physique transformations in modern fitness. David blends heavy compound strength with aesthetic development, motivating millions toward long-term physical evolution.',
     image: '/imgs/david2.jpg'
-  }
-];
-
-export const PRICING_PLANS: PricingPlan[] = [
-  {
-    id: 'basic',
-    name: 'Essentials',
-    price: '789',
-    features: ['24/7 Gym Access', 'Modern Equipment', 'Standard Lockers', 'App Access']
-  },
-  {
-    id: 'pro',
-    name: 'Professional',
-    price: '2,149',
-    features: ['All Essentials', 'Group Classes', '1-on-1 Monthly Consultation', 'Sauna & Recovery Lounge'],
-    recommended: true
-  },
-  {
-    id: 'elite',
-    name: 'Elite',
-    price: '3,299',
-    features: ['All Professional', 'Unlimited PT Sessions', 'Nutritional Coaching', 'Priority Booking']
   }
 ];
 

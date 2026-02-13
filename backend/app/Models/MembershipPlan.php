@@ -14,8 +14,11 @@ class MembershipPlan extends Model
      */
     protected $fillable = [
         'name',
+        'duration',
+        'duration_count',
         'slug',
         'price',
+        'status',
         'billing_cycle',
         'is_active',
         'description',
@@ -30,8 +33,14 @@ class MembershipPlan extends Model
         return [
             'features' => 'array',
             'is_active' => 'boolean',
+            'duration_count' => 'integer',
             'price' => 'decimal:2',
         ];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
     }
 
     public function members()
