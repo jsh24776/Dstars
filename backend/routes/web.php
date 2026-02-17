@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Api\Admin\MembershipPlanController as AdminMembershipPlanController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\FinanceController as AdminFinanceController;
+use App\Http\Controllers\Api\Admin\AttendanceController as AdminAttendanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('admin')->group(function () {
@@ -42,4 +43,12 @@ Route::prefix('admin/api')
         Route::match(['put', 'patch'], '/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'update']);
         Route::patch('/membership-plans/{membershipPlan}/status', [AdminMembershipPlanController::class, 'updateStatus']);
         Route::delete('/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'destroy']);
+        Route::post('/attendance/check-in', [AdminAttendanceController::class, 'checkIn']);
+        Route::patch('/attendance/check-out', [AdminAttendanceController::class, 'checkOut']);
+        Route::post('/attendance/mark-absence', [AdminAttendanceController::class, 'markAbsent']);
+        Route::get('/attendance/summary', [AdminAttendanceController::class, 'summary']);
+        Route::get('/attendance', [AdminAttendanceController::class, 'index']);
+        Route::get('/attendance/{member}', [AdminAttendanceController::class, 'showMemberHistory']);
+        Route::patch('/attendance/{attendance}', [AdminAttendanceController::class, 'update']);
+        Route::delete('/attendance/{attendance}', [AdminAttendanceController::class, 'destroy']);
     });

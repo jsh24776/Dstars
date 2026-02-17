@@ -65,6 +65,11 @@ class Member extends Model
         return $this->hasOne(Invoice::class)->latestOfMany();
     }
 
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class);
+    }
+
     public function getProfileImageUrlAttribute(): ?string
     {
         if (! $this->profile_image_path) {

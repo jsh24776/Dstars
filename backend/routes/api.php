@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Admin\MemberController as AdminMemberController;
 use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\FinanceController as AdminFinanceController;
+use App\Http\Controllers\Api\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\Api\Invoices\InvoiceController as InvoiceController;
 use App\Http\Controllers\Api\Payments\PaymentController as PaymentController;
 use Illuminate\Support\Facades\Route;
@@ -52,6 +53,14 @@ Route::prefix('v1')->group(function () {
             Route::patch('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel']);
             Route::get('/payments/{payment}', [AdminPaymentController::class, 'show']);
             Route::get('/finance-summary', [AdminFinanceController::class, 'summary']);
+            Route::post('/attendance/check-in', [AdminAttendanceController::class, 'checkIn']);
+            Route::patch('/attendance/check-out', [AdminAttendanceController::class, 'checkOut']);
+            Route::post('/attendance/mark-absence', [AdminAttendanceController::class, 'markAbsent']);
+            Route::get('/attendance/summary', [AdminAttendanceController::class, 'summary']);
+            Route::get('/attendance', [AdminAttendanceController::class, 'index']);
+            Route::get('/attendance/{member}', [AdminAttendanceController::class, 'showMemberHistory']);
+            Route::patch('/attendance/{attendance}', [AdminAttendanceController::class, 'update']);
+            Route::delete('/attendance/{attendance}', [AdminAttendanceController::class, 'destroy']);
         });
 });
 
