@@ -528,7 +528,7 @@ const Register: React.FC<RegisterProps> = ({
     <div className="space-y-8">
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-6">
         <p className="text-sm text-zinc-500">We've sent a confirmation code to your email.</p>
-        <p className="text-xs text-zinc-400 mt-2">Check your inbox at {email || 'your email'}.</p>
+        <p className="text-xs text-zinc-400 mt-2">Check your inbox at {email || 'your email'}</p>
       </div>
       <div className="space-y-3">
         <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">6-Digit Code</label>

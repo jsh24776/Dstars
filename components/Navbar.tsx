@@ -22,7 +22,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
       isScrolled ? 'bg-white/80 backdrop-blur-md py-4 shadow-sm' : 'bg-transparent py-6'
     }`}>
       <div className="container mx-auto px-6 md:px-12 flex items-center justify-between">
-        <button onClick={() => onNavigate?.('landing')} className="text-2xl font-extrabold tracking-tighter text-zinc-900 focus:outline-none">
+        <button onClick={() => onNavigate?.('landing')} className="text-2xl font-extrabold tracking-tighter text-white focus:outline-none">
           DSTARS<span className="text-primary">.</span>
         </button>
         
@@ -31,7 +31,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
             <a 
               key={item} 
               href={`#${item.toLowerCase()}`} 
-              className="text-sm font-medium text-zinc-600 hover:text-primary transition-colors"
+              className="text-sm font-medium text-white hover:text-primary transition-colors"
             >
               {item}
             </a>
