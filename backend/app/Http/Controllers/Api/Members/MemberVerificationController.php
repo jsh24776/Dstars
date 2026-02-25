@@ -8,8 +8,10 @@ use App\Http\Requests\Members\VerifyMemberRequest;
 use App\Http\Resources\InvoiceResource;
 use App\Http\Resources\MemberResource;
 use App\Models\Member;
+use App\Models\PendingMemberRegistration;
 use App\Services\Billing\InvoiceService;
 use App\Services\Members\MemberAccessService;
+use App\Services\Members\MemberRegistrationService;
 use App\Services\Members\MemberVerificationService;
 use Illuminate\Http\JsonResponse;
 
@@ -17,6 +19,7 @@ class MemberVerificationController extends ApiController
 {
     public function __construct(
         protected MemberVerificationService $verificationService,
+        protected MemberRegistrationService $registrationService,
         protected MemberAccessService $accessService,
         protected InvoiceService $invoiceService
     ) {
@@ -27,11 +30,7 @@ class MemberVerificationController extends ApiController
         $email = strtolower($request->input('email'));
         $member = Member::where('email', $email)->first();
 
-        if (! $member) {
-            return $this->error('Invalid verification code.', 422);
-        }
-
-        if ($member->is_verified) {
+        if ($member && $member->is_verified) {
             try {
                 $invoice = $this->invoiceService->createForMember($member);
             } catch (\RuntimeException $exception) {
@@ -44,14 +43,20 @@ class MemberVerificationController extends ApiController
             ], 'Email already verified.');
         }
 
-        $verified = $this->verificationService->verifyCode($member, $request->input('code'));
+        $pending = PendingMemberRegistration::where('email', $email)->first();
+        if (! $pending) {
+            return $this->error('Invalid verification code.', 422);
+        }
+
+        $verified = $this->verificationService->verifyCode($pending, $request->input('code'));
 
         if (! $verified) {
             return $this->error('Invalid or expired verification code.', 422);
         }
 
-        $downloadToken = $this->accessService->issueDownloadToken($member);
         try {
+            $member = $this->registrationService->finalize($pending);
+            $downloadToken = $this->accessService->issueDownloadToken($member);
             $invoice = $this->invoiceService->createForMember($member->refresh());
         } catch (\RuntimeException $exception) {
             return $this->error($exception->getMessage(), 422);
@@ -69,24 +74,31 @@ class MemberVerificationController extends ApiController
         $email = strtolower($request->input('email'));
         $member = Member::where('email', $email)->first();
 
-        if (! $member) {
+        if (! $member && ! PendingMemberRegistration::where('email', $email)->exists()) {
             return $this->success([], 'If the account exists, a verification code has been sent.');
         }
 
-        if ($member->is_verified) {
+        if ($member && $member->is_verified) {
             return $this->success([
                 'member' => new MemberResource($member),
             ], 'Email already verified.');
         }
 
+        $pending = PendingMemberRegistration::where('email', $email)->first();
+        if (! $pending) {
+            return $this->success([], 'If the account exists, a verification code has been sent.');
+        }
+
         try {
             $cooldownKey = $this->cooldownKey($email, $request->ip());
-            $this->verificationService->issueCode($member, $cooldownKey);
+            $code = $this->verificationService->issueCode($pending, $cooldownKey);
         } catch (\RuntimeException $exception) {
             return $this->error($exception->getMessage(), 429);
         }
 
-        return $this->success([], 'Verification code sent.');
+        return $this->success([
+            'debug_code' => app()->environment('local') ? $code : null,
+        ], 'Verification code sent.');
     }
 
     protected function cooldownKey(string $email, ?string $ip): string

@@ -32,6 +32,7 @@ Route::prefix('admin/api')
         Route::patch('/members/{member}/status', [\App\Http\Controllers\Api\Admin\MemberController::class, 'updateStatus']);
         Route::delete('/members/{member}', [\App\Http\Controllers\Api\Admin\MemberController::class, 'destroy']);
         Route::get('/invoices', [AdminInvoiceController::class, 'index']);
+        Route::post('/invoices', [AdminInvoiceController::class, 'store']);
         Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show']);
         Route::patch('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel']);
         Route::get('/payments', [AdminPaymentController::class, 'index']);
@@ -44,11 +45,7 @@ Route::prefix('admin/api')
         Route::patch('/membership-plans/{membershipPlan}/status', [AdminMembershipPlanController::class, 'updateStatus']);
         Route::delete('/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'destroy']);
         Route::post('/attendance/check-in', [AdminAttendanceController::class, 'checkIn']);
-        Route::patch('/attendance/check-out', [AdminAttendanceController::class, 'checkOut']);
-        Route::post('/attendance/mark-absence', [AdminAttendanceController::class, 'markAbsent']);
         Route::get('/attendance/summary', [AdminAttendanceController::class, 'summary']);
         Route::get('/attendance', [AdminAttendanceController::class, 'index']);
         Route::get('/attendance/{member}', [AdminAttendanceController::class, 'showMemberHistory']);
-        Route::patch('/attendance/{attendance}', [AdminAttendanceController::class, 'update']);
-        Route::delete('/attendance/{attendance}', [AdminAttendanceController::class, 'destroy']);
     });

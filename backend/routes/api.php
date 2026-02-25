@@ -48,19 +48,16 @@ Route::prefix('v1')->group(function () {
             Route::patch('/members/{member}/status', [AdminMemberController::class, 'updateStatus']);
             Route::delete('/members/{member}', [AdminMemberController::class, 'destroy']);
             Route::get('/invoices', [AdminInvoiceController::class, 'index']);
+            Route::post('/invoices', [AdminInvoiceController::class, 'store']);
             Route::get('/payments', [AdminPaymentController::class, 'index']);
             Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show']);
             Route::patch('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel']);
             Route::get('/payments/{payment}', [AdminPaymentController::class, 'show']);
             Route::get('/finance-summary', [AdminFinanceController::class, 'summary']);
             Route::post('/attendance/check-in', [AdminAttendanceController::class, 'checkIn']);
-            Route::patch('/attendance/check-out', [AdminAttendanceController::class, 'checkOut']);
-            Route::post('/attendance/mark-absence', [AdminAttendanceController::class, 'markAbsent']);
             Route::get('/attendance/summary', [AdminAttendanceController::class, 'summary']);
             Route::get('/attendance', [AdminAttendanceController::class, 'index']);
             Route::get('/attendance/{member}', [AdminAttendanceController::class, 'showMemberHistory']);
-            Route::patch('/attendance/{attendance}', [AdminAttendanceController::class, 'update']);
-            Route::delete('/attendance/{attendance}', [AdminAttendanceController::class, 'destroy']);
         });
 });
 

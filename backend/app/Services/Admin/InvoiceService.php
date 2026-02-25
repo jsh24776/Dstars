@@ -3,16 +3,114 @@
 namespace App\Services\Admin;
 
 use App\Enums\InvoiceStatus;
+use App\Enums\PaymentStatus;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
+use App\Models\Member;
+use App\Models\Payment;
+use App\Services\Members\MembershipLifecycleService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceService
 {
+    public function __construct(protected MembershipLifecycleService $membershipLifecycleService)
+    {
+    }
+
+    public function create(array $payload): Invoice
+    {
+        return DB::transaction(function () use ($payload) {
+            $member = Member::query()
+                ->with('membershipPlan')
+                ->lockForUpdate()
+                ->findOrFail($payload['member_id']);
+
+            if (! $member->membershipPlan) {
+                throw new \RuntimeException('Selected member does not have a membership plan.');
+            }
+
+            $items = array_map(function (array $item) {
+                $quantity = (int) $item['quantity'];
+                $unitPrice = (float) $item['unit_price'];
+                $lineTotal = round($quantity * $unitPrice, 2);
+
+                return [
+                    'description' => $item['description'],
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                ];
+            }, $payload['items']);
+
+            $subtotal = round(array_reduce($items, function (float $carry, array $item) {
+                return $carry + (float) $item['line_total'];
+            }, 0.0), 2);
+            $discount = round((float) ($payload['discount_amount'] ?? 0), 2);
+            $tax = round((float) ($payload['tax_amount'] ?? 0), 2);
+            $grandTotal = round(max(0, $subtotal - $discount + $tax), 2);
+
+            $planPrice = (float) $member->membershipPlan->price;
+            $status = $payload['payment_status'] === 'paid'
+                ? InvoiceStatus::Paid
+                : InvoiceStatus::Pending;
+
+            $invoice = Invoice::create([
+                'invoice_number' => null,
+                'member_id' => $member->id,
+                'plan_name' => $member->membershipPlan->name,
+                'plan_price' => $planPrice,
+                'registration_fee' => 0,
+                'subtotal_amount' => $subtotal,
+                'discount_amount' => $discount,
+                'tax_amount' => $tax,
+                'total_amount' => $grandTotal,
+                'status' => $status,
+                'payment_method' => $payload['payment_method'],
+                'notes' => $payload['notes'] ?? null,
+                'issued_at' => $payload['issued_at'] ?? now(),
+            ]);
+
+            $invoice->forceFill([
+                'invoice_number' => $this->formatInvoiceNumber($invoice->id),
+            ])->save();
+
+            foreach ($items as $item) {
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'description' => $item['description'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'line_total' => $item['line_total'],
+                ]);
+            }
+
+            if ($status === InvoiceStatus::Paid) {
+                $payment = Payment::create([
+                    'payment_reference' => null,
+                    'invoice_id' => $invoice->id,
+                    'member_id' => $member->id,
+                    'amount_paid' => $grandTotal,
+                    'payment_method' => $payload['payment_method'],
+                    'payment_status' => PaymentStatus::Confirmed,
+                    'paid_at' => $payload['issued_at'] ?? now(),
+                ]);
+
+                $payment->forceFill([
+                    'payment_reference' => $this->formatPaymentReference($payment->id),
+                ])->save();
+
+                $this->membershipLifecycleService->activate($member, $payment->paid_at?->copy());
+            }
+
+            return $invoice->refresh();
+        });
+    }
+
     public function paginate(array $filters): LengthAwarePaginator
     {
-        $query = Invoice::query()->with(['member', 'payment']);
+        $query = Invoice::query()->with(['member.membershipPlan', 'payment', 'items']);
 
         $this->applyFilters($query, $filters);
 
@@ -83,5 +181,15 @@ class InvoiceService
             $hasPayment = filter_var($filters['has_payment'], FILTER_VALIDATE_BOOLEAN);
             $hasPayment ? $query->whereHas('payment') : $query->whereDoesntHave('payment');
         }
+    }
+
+    protected function formatInvoiceNumber(int $id): string
+    {
+        return 'DSTARS-INV-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
+    }
+
+    protected function formatPaymentReference(int $id): string
+    {
+        return 'DSTARS-PAY-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
     }
 }

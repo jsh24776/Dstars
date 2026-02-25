@@ -1,11 +1,16 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { consumeDashboardDeepLink, onDashboardDeepLink } from '../../services/dashboardDeepLink';
 
 type MemberStatus = 'active' | 'inactive' | 'suspended';
 
 interface MemberPlan {
   id: number;
   name: string;
+  price?: number | string;
+  duration?: string;
+  duration_count?: number;
 }
 
 interface Member {
@@ -19,7 +24,17 @@ interface Member {
   is_verified: boolean;
   profile_image_url: string | null;
   membership_plan: MemberPlan | null;
+  membership_start_date: string | null;
+  membership_end_date: string | null;
+  membership_status: 'active' | 'expired';
+  days_remaining: number | null;
+  last_check_in: {
+    check_in_date: string;
+    check_in_time: string;
+  } | null;
+  is_inactive: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 interface PaginatedResponse<T> {
@@ -32,10 +47,17 @@ interface PaginatedResponse<T> {
   };
 }
 
+interface ResourceResponse<T> {
+  data: T;
+}
+
 const getCookie = (name: string) => {
   const match = document.cookie.match(new RegExp(`(^|;\\s*)${name}=([^;]*)`));
   return match ? decodeURIComponent(match[2]) : '';
 };
+
+const formatDateTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString() : 'No check-in yet';
 
 const Members: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,6 +72,10 @@ const Members: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [activeMember, setActiveMember] = useState<Member | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailMember, setDetailMember] = useState<Member | null>(null);
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -103,6 +129,25 @@ const Members: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, statusFilter]);
 
+  useEffect(() => {
+    if ((!showForm && !showDetail) || typeof document === 'undefined') return;
+
+    const { body, documentElement } = document;
+    const originalOverflow = body.style.overflow;
+    const originalPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      body.style.overflow = originalOverflow;
+      body.style.paddingRight = originalPaddingRight;
+    };
+  }, [showForm, showDetail]);
+
   const openCreate = () => {
     setIsEditing(false);
     setActiveMember(null);
@@ -128,6 +173,80 @@ const Members: React.FC = () => {
     });
     setShowForm(true);
   };
+
+  const openView = async (member: Member) => {
+    setShowDetail(true);
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetailMember(member);
+
+    try {
+      const response = await fetch(`${baseUrl}/admin/api/members/${member.id}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Unable to load member details.');
+      }
+
+      const payload: ResourceResponse<Member> = await response.json();
+      setDetailMember(payload.data);
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : 'Unable to load member details.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const openViewById = async (memberId: number) => {
+    setShowDetail(true);
+    setDetailLoading(true);
+    setDetailError(null);
+
+    try {
+      const response = await fetch(`${baseUrl}/admin/api/members/${memberId}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Unable to load member details.');
+      }
+
+      const payload: ResourceResponse<Member> = await response.json();
+      setDetailMember(payload.data);
+    } catch (err) {
+      setDetailMember(null);
+      setDetailError(err instanceof Error ? err.message : 'Unable to load member details.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const link = consumeDashboardDeepLink('members', 'member');
+    if (link) {
+      openViewById(link.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const off = onDashboardDeepLink((link) => {
+      if (link.tab === 'members' && link.kind === 'member') {
+        openViewById(link.id);
+      }
+    });
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const submitForm = async () => {
     const xsrfToken = getCookie('XSRF-TOKEN');
@@ -292,7 +411,8 @@ const Members: React.FC = () => {
               <tr className="bg-zinc-50/30 border-b border-zinc-100">
                 <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Member</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Plan</th>
-                <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Status</th>
+                <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Membership</th>
+                <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Days Remaining</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Last Check-In</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Joined</th>
                 <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Actions</th>
@@ -300,7 +420,7 @@ const Members: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-zinc-50">
               {members.length > 0 ? members.map((member) => (
-                <tr key={member.id} className="group hover:bg-zinc-50/50 transition-colors">
+                <tr key={member.id} className={`group transition-colors ${member.membership_status === 'expired' ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-zinc-50/50'}`}>
                   <td className="px-8 py-6">
                     <div className="flex items-center space-x-4">
                       {member.profile_image_url ? (
@@ -327,22 +447,33 @@ const Members: React.FC = () => {
                   </td>
                   <td className="px-8 py-6">
                     <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                      member.status === 'active' ? 'bg-green-50 text-green-600 border-green-100' :
-                      member.status === 'inactive' ? 'bg-zinc-100 text-zinc-500 border-zinc-200' :
-                      'bg-amber-50 text-amber-600 border-amber-100'
+                      member.membership_status === 'active'
+                        ? 'bg-green-50 text-green-600 border-green-100'
+                        : 'bg-red-50 text-red-600 border-red-100'
                     }`}>
-                      {member.status}
+                      {member.membership_status}
                     </span>
+                    {member.membership_status === 'expired' && (
+                      <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                        Membership Expired
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-8 py-6 text-sm text-zinc-500 font-semibold">
+                    {member.days_remaining !== null ? Math.max(member.days_remaining, 0) : 0}
                   </td>
                   <td className="px-8 py-6 text-sm text-zinc-500 font-medium">
-                    {member.is_verified ? 'Verified' : 'Pending'}
+                    {formatDateTime(member.last_check_in?.check_in_time ?? null)}
                   </td>
                   <td className="px-8 py-6 text-sm text-zinc-500 font-medium font-mono">
                     {new Date(member.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex items-center space-x-2">
-                      <button className="p-2 hover:bg-white hover:shadow-sm border border-transparent hover:border-zinc-200 rounded-xl text-zinc-400 hover:text-zinc-900 transition-all">
+                      <button
+                        onClick={() => openView(member)}
+                        className="p-2 hover:bg-white hover:shadow-sm border border-transparent hover:border-zinc-200 rounded-xl text-zinc-400 hover:text-zinc-900 transition-all"
+                      >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -377,7 +508,7 @@ const Members: React.FC = () => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={6} className="px-8 py-20 text-center">
+                  <td colSpan={7} className="px-8 py-20 text-center">
                     <div className="text-zinc-400 text-sm font-medium">
                       {isLoading ? 'Loading members…' : `No members found matching "${searchTerm}"`}
                     </div>
@@ -414,9 +545,125 @@ const Members: React.FC = () => {
         </div>
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-xl p-8">
+      {showDetail && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-2xl p-8 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-2xl font-black text-zinc-900">Member Details</h3>
+                <p className="text-sm text-zinc-400">Read-only profile information.</p>
+              </div>
+              <button
+                onClick={() => setShowDetail(false)}
+                className="p-2 rounded-xl border border-zinc-200 text-zinc-400 hover:text-zinc-900"
+              >
+                X
+              </button>
+            </div>
+
+            {detailLoading ? (
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-6 py-8 text-sm font-medium text-zinc-500">
+                Loading member details...
+              </div>
+            ) : detailError ? (
+              <div className="rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-semibold text-red-600">
+                {detailError}
+              </div>
+            ) : detailMember ? (
+              <div className="space-y-6">
+                <div className="flex items-center space-x-4 rounded-2xl border border-zinc-100 bg-zinc-50/70 p-5">
+                  {detailMember.profile_image_url ? (
+                    <img
+                      src={detailMember.profile_image_url}
+                      className="w-16 h-16 rounded-2xl object-cover border border-zinc-200"
+                      alt={detailMember.full_name}
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-zinc-100 flex items-center justify-center text-zinc-900 font-bold text-xl border border-zinc-200">
+                      {detailMember.full_name.charAt(0)}
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-lg font-black text-zinc-900">{detailMember.full_name}</div>
+                    <div className="text-sm text-zinc-500 font-medium">
+                      {detailMember.membership_plan?.name ?? 'Unassigned plan'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Member ID</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{detailMember.membership_id ?? '-'}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Username</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{detailMember.username ?? '-'}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Email</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800 break-all">{detailMember.email}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Phone</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{detailMember.phone || '-'}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Status</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{detailMember.status}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Membership Status</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800 capitalize">{detailMember.membership_status}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Days Remaining</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{detailMember.days_remaining !== null ? Math.max(detailMember.days_remaining, 0) : 0}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Last Check-In</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{formatDateTime(detailMember.last_check_in?.check_in_time ?? null)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Membership End</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">{detailMember.membership_end_date ? new Date(detailMember.membership_end_date).toLocaleDateString() : '-'}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Joined</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">
+                      {new Date(detailMember.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Last Updated</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-800">
+                      {new Date(detailMember.updated_at).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowDetail(false)}
+                    className="px-5 py-3 rounded-xl border border-zinc-200 text-xs font-bold uppercase tracking-widest text-zinc-500 hover:bg-zinc-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-6 py-8 text-sm font-medium text-zinc-500">
+                Member not found.
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showForm && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-xl p-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-2xl font-black text-zinc-900">{isEditing ? 'Edit Member' : 'Add Member'}</h3>
@@ -484,7 +731,8 @@ const Members: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

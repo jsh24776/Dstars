@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { consumeDashboardDeepLink, onDashboardDeepLink } from '../../services/dashboardDeepLink';
 
 type PaymentStatus = 'recorded' | 'confirmed';
 
@@ -151,6 +153,25 @@ const Payments: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [methodFilter, statusFilter]);
 
+  useEffect(() => {
+    if (!showDetails || typeof document === 'undefined') return;
+
+    const { body, documentElement } = document;
+    const originalOverflow = body.style.overflow;
+    const originalPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      body.style.overflow = originalOverflow;
+      body.style.paddingRight = originalPaddingRight;
+    };
+  }, [showDetails]);
+
   const toggleMethodFilter = () => {
     setMethodFilter((current) => {
       if (current === 'all') return 'gcash';
@@ -192,6 +213,54 @@ const Payments: React.FC = () => {
       // Silent
     }
   };
+
+  const openDetailsById = async (paymentId: number) => {
+    setShowDetails(true);
+    setActivePayment(null);
+
+    try {
+      const response = await fetch(`${baseUrl}/admin/api/payments/${paymentId}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Unable to load payment details.');
+      }
+
+      const payload = await response.json().catch(() => null);
+      const updated = payload?.data?.payment;
+      if (!updated?.id) {
+        throw new Error('Unable to load payment details.');
+      }
+      setActivePayment(updated);
+    } catch (err) {
+      setShowDetails(false);
+      setActivePayment(null);
+      setError(err instanceof Error ? err.message : 'Unable to load payment details.');
+    }
+  };
+
+  useEffect(() => {
+    const link = consumeDashboardDeepLink('payments', 'payment');
+    if (link) {
+      openDetailsById(link.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const off = onDashboardDeepLink((link) => {
+      if (link.tab === 'payments' && link.kind === 'payment') {
+        openDetailsById(link.id);
+      }
+    });
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const summaryCards = [
     {
@@ -351,9 +420,9 @@ const Payments: React.FC = () => {
         </div>
       )}
 
-      {showDetails && activePayment && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-xl p-8">
+      {showDetails && activePayment && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-xl p-8">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-2xl font-black text-zinc-900">Payment Details</h3>
@@ -407,7 +476,8 @@ const Payments: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Admin\Invoices\CancelInvoiceRequest;
 use App\Http\Requests\Admin\Invoices\IndexInvoiceRequest;
+use App\Http\Requests\Admin\Invoices\StoreInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
 use App\Models\Invoice;
 use App\Services\Admin\InvoiceService;
@@ -23,10 +24,23 @@ class InvoiceController extends ApiController
         return InvoiceResource::collection($invoices);
     }
 
+    public function store(StoreInvoiceRequest $request): JsonResponse
+    {
+        try {
+            $invoice = $this->service->create($request->validated());
+        } catch (\RuntimeException $exception) {
+            return $this->error($exception->getMessage(), 422);
+        }
+
+        return $this->success([
+            'invoice' => new InvoiceResource($invoice->load(['member.membershipPlan', 'payment', 'items'])),
+        ], 'Invoice created.', 201);
+    }
+
     public function show(Invoice $invoice): JsonResponse
     {
         return $this->success([
-            'invoice' => new InvoiceResource($invoice->load(['member', 'payment'])),
+            'invoice' => new InvoiceResource($invoice->load(['member.membershipPlan', 'payment', 'items'])),
         ]);
     }
 
@@ -41,7 +55,7 @@ class InvoiceController extends ApiController
         }
 
         return $this->success([
-            'invoice' => new InvoiceResource($invoice->load(['member', 'payment'])),
+            'invoice' => new InvoiceResource($invoice->load(['member.membershipPlan', 'payment', 'items'])),
         ], 'Invoice cancelled.');
     }
 }

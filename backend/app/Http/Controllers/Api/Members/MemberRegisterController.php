@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Members;
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Members\RegisterMemberRequest;
-use App\Http\Resources\MemberResource;
 use App\Services\Members\MemberRegistrationService;
 use Illuminate\Http\JsonResponse;
 
@@ -19,10 +18,20 @@ class MemberRegisterController extends ApiController
     {
         $cooldownKey = $this->cooldownKey($request->input('email'), $request->ip());
 
-        $member = $this->registrationService->register($request->validated(), $cooldownKey);
+        try {
+            $result = $this->registrationService->register($request->validated(), $cooldownKey);
+        } catch (\RuntimeException $exception) {
+            return $this->error($exception->getMessage(), 422);
+        }
+
+        $pending = $result['pending'];
+        $code = $result['code'];
 
         return $this->success([
-            'member' => new MemberResource($member),
+            'pending_registration' => [
+                'email' => $pending->email,
+            ],
+            'debug_code' => app()->environment('local') ? $code : null,
         ], 'Registration successful. Check your email for the verification code.', 201);
     }
 

@@ -32,6 +32,7 @@ const Register: React.FC<RegisterProps> = ({
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [apiError, setApiError] = useState('');
+  const [debugCode, setDebugCode] = useState('');
   const [planError, setPlanError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'gcash' | 'maya'>('gcash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -184,6 +185,7 @@ const Register: React.FC<RegisterProps> = ({
 
     setIsSubmitting(true);
     setApiError('');
+    setDebugCode('');
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/members/register`, {
@@ -205,6 +207,10 @@ const Register: React.FC<RegisterProps> = ({
       if (!response.ok) {
         setApiError(payload?.message || 'Registration failed.');
         return;
+      }
+
+      if (payload?.data?.debug_code) {
+        setDebugCode(String(payload.data.debug_code));
       }
 
       setStep('verify');
@@ -348,6 +354,7 @@ const Register: React.FC<RegisterProps> = ({
     if (isResending || resendCooldown > 0) return;
     setIsResending(true);
     setApiError('');
+    setDebugCode('');
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/members/resend-code`, {
@@ -364,6 +371,10 @@ const Register: React.FC<RegisterProps> = ({
       if (!response.ok) {
         setApiError(payload?.message || 'Unable to resend code.');
         return;
+      }
+
+      if (payload?.data?.debug_code) {
+        setDebugCode(String(payload.data.debug_code));
       }
 
       setResendCooldown(60);
@@ -566,6 +577,11 @@ const Register: React.FC<RegisterProps> = ({
       {apiError && (
         <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
           {apiError}
+        </div>
+      )}
+      {debugCode && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Dev OTP Code: <span className="font-bold tracking-widest">{debugCode}</span>
         </div>
       )}
       <div className="space-y-3">

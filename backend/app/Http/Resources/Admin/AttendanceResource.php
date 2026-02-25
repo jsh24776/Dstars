@@ -17,12 +17,8 @@ class AttendanceResource extends JsonResource
         return [
             'id' => $this->id,
             'member_id' => $this->member_id,
-            'attendance_date' => $this->attendance_date?->toDateString(),
-            'check_in_time' => $this->check_in_time?->toDateTimeString(),
-            'check_out_time' => $this->check_out_time?->toDateTimeString(),
-            'status' => $this->status?->value ?? $this->status,
-            'source' => $this->source?->value ?? $this->source,
-            'notes' => $this->notes,
+            'check_in_date' => $this->check_in_date?->toDateString(),
+            'check_in_time' => $this->check_in_time?->toIso8601String(),
             'member' => $this->whenLoaded('member', function () {
                 if (! $this->member) {
                     return null;
@@ -40,4 +36,3 @@ class AttendanceResource extends JsonResource
         ];
     }
 }
-

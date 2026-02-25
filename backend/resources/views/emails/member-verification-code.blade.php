@@ -9,7 +9,7 @@
         <div style="max-width: 520px; margin: 40px auto; background: #ffffff; border-radius: 10px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08);">
             <h2 style="margin-top: 0; color: #1f2937;">Verify your email</h2>
             <p style="color: #4b5563; line-height: 1.6;">
-                Hi {{ $member->full_name ?? 'there' }},<br>
+                Hi {{ $fullName ?? 'there' }},<br>
                 Use the verification code below to confirm your DStars Premium Fitness membership.
             </p>
 

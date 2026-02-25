@@ -38,12 +38,8 @@ export interface Testimonial {
 export interface AttendanceRecord {
   id: number;
   member_id: number;
-  attendance_date: string;
+  check_in_date: string;
   check_in_time: string | null;
-  check_out_time: string | null;
-  status: 'present' | 'absent' | 'late' | 'cancelled' | string;
-  source: 'admin_manual' | 'qr_scan' | 'virtual_id' | 'kiosk' | string;
-  notes?: string | null;
   member?: {
     id: number;
     full_name: string;
@@ -59,9 +55,11 @@ export interface AttendanceSummary {
     from_date: string;
     to_date: string;
   };
-  total_check_ins_today: number;
-  total_absences_today: number;
-  monthly_attendance_count: number;
+  today_total_check_ins: number;
+  total_active_members: number;
+  total_expired_members: number;
+  members_expiring_in_3_days: number;
+  today_check_ins: AttendanceRecord[];
   most_active_members: Array<{
     member_id: number;
     full_name: string;
@@ -70,10 +68,6 @@ export interface AttendanceSummary {
   }>;
   attendance_trends: Array<{
     date: string;
-    total_check_ins: number;
-  }>;
-  peak_attendance_times: Array<{
-    hour: number;
     total_check_ins: number;
   }>;
 }

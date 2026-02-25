@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { consumeDashboardDeepLink, onDashboardDeepLink } from '../../services/dashboardDeepLink';
 import type { MembershipPlan } from '../../types';
 import {
   createAdminMembershipPlan,
@@ -40,10 +42,15 @@ const MembershipPlans: React.FC = () => {
   const [planToDelete, setPlanToDelete] = useState<MembershipPlan | null>(null);
   const [form, setForm] = useState<MembershipPlanInput>(defaultForm);
   const [featuresText, setFeaturesText] = useState('');
+  const isAnyModalOpen = showForm || Boolean(planToDelete);
 
   const sortedPlans = useMemo(
     () => [...plans].sort((a, b) => a.price - b.price),
     [plans]
+  );
+  const baseUrl = useMemo(
+    () => (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000',
+    []
   );
 
   const loadPlans = async (targetPage = page) => {
@@ -73,6 +80,69 @@ const MembershipPlans: React.FC = () => {
     loadPlans(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, statusFilter]);
+
+  const openEditById = async (planId: number) => {
+    try {
+      const response = await fetch(`${baseUrl}/admin/api/membership-plans/${planId}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Unable to load membership plan details.');
+      }
+
+      const payload = await response.json().catch(() => null);
+      const plan = payload?.data as MembershipPlan | undefined;
+      if (!plan?.id) {
+        throw new Error('Unable to load membership plan details.');
+      }
+
+      openEdit(plan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load membership plan details.');
+    }
+  };
+
+  useEffect(() => {
+    const link = consumeDashboardDeepLink('plans', 'plan');
+    if (link) {
+      openEditById(link.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const off = onDashboardDeepLink((link) => {
+      if (link.tab === 'plans' && link.kind === 'plan') {
+        openEditById(link.id);
+      }
+    });
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!isAnyModalOpen || typeof document === 'undefined') return;
+
+    const { body, documentElement } = document;
+    const originalOverflow = body.style.overflow;
+    const originalPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      body.style.overflow = originalOverflow;
+      body.style.paddingRight = originalPaddingRight;
+    };
+  }, [isAnyModalOpen]);
 
   const openCreate = () => {
     setEditingPlan(null);
@@ -159,9 +229,6 @@ const MembershipPlans: React.FC = () => {
           <p className="text-zinc-500 mt-1">Manage pricing, durations, and plan availability.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button className="px-6 py-3 bg-white border border-zinc-200 rounded-2xl text-[10px] font-bold text-zinc-600 hover:bg-zinc-50 transition-all uppercase tracking-widest">
-            Plan Settings
-          </button>
           <button
             onClick={openCreate}
             className="px-6 py-3 bg-primary text-white rounded-2xl text-[10px] font-bold shadow-xl shadow-primary/20 hover:opacity-95 transition-all uppercase tracking-widest"
@@ -291,9 +358,9 @@ const MembershipPlans: React.FC = () => {
         </div>
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-2xl p-8">
+      {showForm && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-2xl p-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-2xl font-black text-zinc-900">{editingPlan ? 'Edit Membership Plan' : 'Create Membership Plan'}</h3>
@@ -390,12 +457,13 @@ const MembershipPlans: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {planToDelete && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-lg p-8">
+      {planToDelete && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 duration-200">
             <h3 className="text-2xl font-black text-zinc-900">Delete Membership Plan</h3>
             <p className="text-sm text-zinc-500 mt-2">
               Delete <span className="font-semibold text-zinc-900">{planToDelete.name}</span>? This action cannot be undone.
@@ -415,7 +483,8 @@ const MembershipPlans: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

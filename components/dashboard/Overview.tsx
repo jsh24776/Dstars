@@ -26,7 +26,7 @@ const Overview: React.FC = () => {
         {stats.map((stat, i) => (
           <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-zinc-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-500 group">
             <div className="flex items-center justify-between mb-8">
-              <div className="p-4 bg-zinc-50 text-primary rounded-[1.25rem] group-hover:bg-primary group-hover:text-white transition-colors duration-300 border border-zinc-100">
+              <div className="p-4 bg-zinc-50 text-primary rounded-[1.25rem] group-hover:bg-zinc-900 group-hover:text-white transition-colors duration-300 border border-zinc-100">
                 {stat.icon}
               </div>
               <span className={`text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest ${stat.trend.startsWith('+') ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
@@ -113,3 +113,4 @@ const Overview: React.FC = () => {
 };
 
 export default Overview;
+

@@ -25,7 +25,7 @@ class MemberController extends ApiController
 
         $validated = $request->validated();
 
-        $query = Member::query()->with('membershipPlan');
+        $query = Member::query()->with(['membershipPlan', 'latestInvoice', 'latestCheckIn']);
 
         if (! empty($validated['search'])) {
             $search = $validated['search'];
@@ -71,7 +71,7 @@ class MemberController extends ApiController
 
         $member = $this->service->create($request->validated());
 
-        return (new MemberResource($member->load('membershipPlan')))
+        return (new MemberResource($member->load(['membershipPlan', 'latestInvoice', 'latestCheckIn'])))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -80,7 +80,7 @@ class MemberController extends ApiController
     {
         $this->authorize('view', $member);
 
-        return new MemberResource($member->load('membershipPlan'));
+        return new MemberResource($member->load(['membershipPlan', 'latestInvoice', 'latestCheckIn']));
     }
 
     public function update(UpdateMemberRequest $request, Member $member)
@@ -89,7 +89,7 @@ class MemberController extends ApiController
 
         $member = $this->service->update($member, $request->validated());
 
-        return new MemberResource($member->load('membershipPlan'));
+        return new MemberResource($member->load(['membershipPlan', 'latestInvoice', 'latestCheckIn']));
     }
 
     public function updateStatus(UpdateMemberStatusRequest $request, Member $member)
@@ -98,7 +98,7 @@ class MemberController extends ApiController
 
         $member = $this->service->updateStatus($member, $request->validated()['status']);
 
-        return new MemberResource($member->load('membershipPlan'));
+        return new MemberResource($member->load(['membershipPlan', 'latestInvoice', 'latestCheckIn']));
     }
 
     public function destroy(DeleteMemberRequest $request, Member $member)

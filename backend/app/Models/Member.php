@@ -26,6 +26,8 @@ class Member extends Model
         'status',
         'membership_id',
         'membership_plan_id',
+        'membership_start_date',
+        'membership_end_date',
         'profile_image_path',
         'verification_code',
         'verification_expires_at',
@@ -47,6 +49,8 @@ class Member extends Model
             'download_token_expires_at' => 'datetime',
             'is_verified' => 'boolean',
             'status' => MemberStatus::class,
+            'membership_start_date' => 'date',
+            'membership_end_date' => 'date',
         ];
     }
 
@@ -68,6 +72,16 @@ class Member extends Model
     public function attendances()
     {
         return $this->hasMany(Attendance::class);
+    }
+
+    public function checkIns()
+    {
+        return $this->hasMany(CheckIn::class);
+    }
+
+    public function latestCheckIn()
+    {
+        return $this->hasOne(CheckIn::class)->latestOfMany('check_in_time');
     }
 
     public function getProfileImageUrlAttribute(): ?string
