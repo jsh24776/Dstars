@@ -5,10 +5,19 @@ use App\Http\Controllers\Api\Auth\LogoutController;
 use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\VerificationController;
+use App\Http\Controllers\Api\AI\ConciergeController;
+use App\Http\Controllers\Api\MembershipPlans\MembershipPlanController as PublicMembershipPlanController;
 use App\Http\Controllers\Api\Members\MemberRegisterController;
 use App\Http\Controllers\Api\Members\MemberCardController;
 use App\Http\Controllers\Api\Members\MemberValidationController;
 use App\Http\Controllers\Api\Members\MemberVerificationController;
+use App\Http\Controllers\Api\Admin\MemberController as AdminMemberController;
+use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Api\Admin\FinanceController as AdminFinanceController;
+use App\Http\Controllers\Api\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Api\Invoices\InvoiceController as InvoiceController;
+use App\Http\Controllers\Api\Payments\PaymentController as PaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -30,6 +39,15 @@ Route::prefix('v1')->group(function () {
         ->middleware(['auth:sanctum', 'verified']);
 });
 
+Route::post('/invoices/create', [InvoiceController::class, 'store'])
+    ->middleware('throttle:member-invoice');
+Route::get('/members/{member}/invoice', [InvoiceController::class, 'showForMember'])
+    ->middleware('throttle:member-invoice');
+Route::post('/payments/record', [PaymentController::class, 'record'])
+    ->middleware('throttle:member-payment');
+Route::post('/ai-concierge', ConciergeController::class)
+    ->middleware('throttle:ai-concierge');
+
 Route::prefix('members')->group(function () {
     Route::post('/register', MemberRegisterController::class)
         ->middleware('throttle:member-register');
@@ -43,3 +61,6 @@ Route::prefix('members')->group(function () {
         ->middleware(['signed', 'throttle:member-validate'])
         ->name('members.validate');
 });
+
+Route::get('/membership-plans', [PublicMembershipPlanController::class, 'index'])
+    ->middleware('throttle:member-register');

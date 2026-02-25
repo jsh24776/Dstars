@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Programs from './components/Programs';
@@ -10,31 +10,99 @@ import Footer from './components/Footer';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import DashboardLayout from './components/dashboard/DashboardLayout';
-import Overview from './components/dashboard/Overview';
+import Dashboard from './components/dashboard/Dashboard';
 import Members from './components/dashboard/Members';
-import TrainersAdmin from './components/dashboard/TrainersAdmin';
-import Schedule from './components/dashboard/Schedule';
+import MembershipPlans from './components/dashboard/MembershipPlans';
+import Invoices from './components/dashboard/Invoices';
+import Payments from './components/dashboard/Payments';
+import Attendance from './components/dashboard/Attendance';
+import { getCookie, getApiBaseUrl } from './utils/api';
 
 type View = 'landing' | 'login' | 'register' | 'dashboard';
-type DashboardTab = 'overview' | 'members' | 'trainers' | 'schedule';
+type DashboardTab = 'dashboard' | 'members' | 'plans' | 'invoices' | 'payments' | 'attendance';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('landing');
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('dashboard');
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(() => {
+    const raw = window.sessionStorage.getItem('selectedMembershipPlanId');
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? null : parsed;
+  });
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+
+
+
+  const logoutAdmin = async () => {
+    const baseUrl = getApiBaseUrl();
+
+    try {
+      await fetch(`${baseUrl}/sanctum/csrf-cookie`, { credentials: 'include' });
+      const xsrfToken = getCookie('XSRF-TOKEN');
+
+      await fetch(`${baseUrl}/admin/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}),
+        },
+      });
+    } catch {
+      // Ignore logout failures; we still clear local state.
+    }
+  };
 
   const navigateTo = (view: View) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setCurrentView(view);
   };
 
+  useEffect(() => {
+    const checkSession = async () => {
+      const baseUrl = getApiBaseUrl();
+
+      try {
+        const response = await fetch(`${baseUrl}/admin/dashboard`, {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        });
+
+        if (response.ok) {
+          setCurrentView('dashboard');
+        }
+      } catch {
+        // Ignore bootstrapping errors.
+      } finally {
+        setIsBootstrapping(false);
+      }
+    };
+
+    checkSession();
+  }, []);
+
+  if (isBootstrapping) {
+    return (
+      <div className="min-h-screen bg-white font-inter flex items-center justify-center text-zinc-500 text-sm font-semibold">
+        Loading session...
+      </div>
+    );
+  }
+
   const renderDashboardContent = () => {
     switch (dashboardTab) {
-      case 'overview': return <Overview />;
+      case 'dashboard': return <Dashboard />;
       case 'members': return <Members />;
-      case 'trainers': return <TrainersAdmin />;
-      case 'schedule': return <Schedule />;
-      default: return <Overview />;
+      case 'plans': return <MembershipPlans />;
+      case 'invoices': return <Invoices />;
+      case 'payments': return <Payments />;
+      case 'attendance': return <Attendance />;
+      default: return <Dashboard />;
     }
   };
 
@@ -43,7 +111,10 @@ const App: React.FC = () => {
       <DashboardLayout 
         activeTab={dashboardTab} 
         onTabChange={(id) => setDashboardTab(id as DashboardTab)}
-        onLogout={() => navigateTo('landing')}
+        onLogout={async () => {
+          await logoutAdmin();
+          navigateTo('landing');
+        }}
       >
         {renderDashboardContent()}
       </DashboardLayout>
@@ -74,15 +145,26 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-white selection:bg-primary selection:text-white font-inter">
       <Navbar onNavigate={(v) => { 
-        if (v === 'register') setSelectedPlanId(null);
+        if (v === 'register') {
+          setSelectedPlanId(null);
+          window.sessionStorage.removeItem('selectedMembershipPlanId');
+        }
         navigateTo(v as View); 
       }} />
       <main>
-        <Hero onJoin={() => { setSelectedPlanId(null); navigateTo('register'); }} />
+        <Hero onJoin={() => {
+          setSelectedPlanId(null);
+          window.sessionStorage.removeItem('selectedMembershipPlanId');
+          navigateTo('register');
+        }} />
         <Programs />
         <AIConcierge />
         <Trainers />
-        <Pricing onJoin={(planId) => { setSelectedPlanId(planId); navigateTo('register'); }} />
+        <Pricing onJoin={(planId) => {
+          setSelectedPlanId(planId);
+          window.sessionStorage.setItem('selectedMembershipPlanId', String(planId));
+          navigateTo('register');
+        }} />
         
         {/* Call to Action Section */}
         <section className="py-24 bg-white">
@@ -103,7 +185,11 @@ const App: React.FC = () => {
                 </p>
                 <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                   <button 
-                    onClick={() => { setSelectedPlanId(null); navigateTo('register'); }}
+                    onClick={() => {
+                      setSelectedPlanId(null);
+                      window.sessionStorage.removeItem('selectedMembershipPlanId');
+                      navigateTo('register');
+                    }}
                     className="bg-primary text-white px-10 py-5 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-xl shadow-primary/20"
                   >
                     Apply for Membership

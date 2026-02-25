@@ -2,13 +2,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AuthLayout from './AuthLayout';
 import Button from '../Button';
-import { PRICING_PLANS } from '../../constants';
+import type { MembershipPlan } from '../../types';
+import { fetchPublicMembershipPlans } from '../../services/membershipPlanService';
 
 interface RegisterProps {
   onRegister: () => void;
   onNavigateToLogin: () => void;
   onBackToLanding: () => void;
-  preselectedPlanId?: string | null;
+  preselectedPlanId?: number | null;
 }
 
 const Register: React.FC<RegisterProps> = ({
@@ -21,7 +22,9 @@ const Register: React.FC<RegisterProps> = ({
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [planId, setPlanId] = useState(preselectedPlanId ?? PRICING_PLANS[0]?.id ?? 'basic');
+  const [planId, setPlanId] = useState<number | null>(preselectedPlanId ?? null);
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
   const [verificationCode, setVerificationCode] = useState<string[]>(['', '', '', '', '', '']);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showVerified, setShowVerified] = useState(false);
@@ -29,10 +32,12 @@ const Register: React.FC<RegisterProps> = ({
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [apiError, setApiError] = useState('');
+  const [planError, setPlanError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'gcash' | 'maya'>('gcash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [memberId, setMemberId] = useState(() => `DST-${Math.floor(100000 + Math.random() * 900000)}`);
   const [memberApiId, setMemberApiId] = useState<number | null>(null);
+  const [memberInvoiceId, setMemberInvoiceId] = useState<number | null>(null);
   const [memberMembershipId, setMemberMembershipId] = useState<string | null>(null);
   const [memberDownloadToken, setMemberDownloadToken] = useState<string | null>(null);
   const [isDownloadingId, setIsDownloadingId] = useState(false);
@@ -105,6 +110,42 @@ const Register: React.FC<RegisterProps> = ({
   }, [preselectedPlanId]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadPlans = async () => {
+      setIsLoadingPlans(true);
+      setPlanError('');
+
+      try {
+        const list = await fetchPublicMembershipPlans();
+        if (!isMounted) return;
+
+        setPlans(list);
+        const sessionPlanId = Number(window.sessionStorage.getItem('selectedMembershipPlanId'));
+        const preferredPlanId = preselectedPlanId ?? (Number.isNaN(sessionPlanId) ? null : sessionPlanId);
+        const hasPreferred = preferredPlanId !== null && list.some((plan) => plan.id === preferredPlanId);
+
+        if (hasPreferred) {
+          setPlanId(preferredPlanId);
+        } else {
+          setPlanId((current) => (current && list.some((plan) => plan.id === current) ? current : (list[0]?.id ?? null)));
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        setPlanError(err instanceof Error ? err.message : 'Unable to load plans.');
+      } finally {
+        if (isMounted) setIsLoadingPlans(false);
+      }
+    };
+
+    loadPlans();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [preselectedPlanId]);
+
+  useEffect(() => {
     return () => {
       if (verifyTimeoutRef.current) window.clearTimeout(verifyTimeoutRef.current);
       if (paymentTimeoutRef.current) window.clearTimeout(paymentTimeoutRef.current);
@@ -120,13 +161,12 @@ const Register: React.FC<RegisterProps> = ({
   }, [resendCooldown]);
 
   const selectedPlan = useMemo(
-    () => PRICING_PLANS.find((plan) => plan.id === planId) ?? PRICING_PLANS[0],
-    [planId]
+    () => plans.find((plan) => plan.id === planId) ?? plans[0] ?? null,
+    [planId, plans]
   );
 
   const priceValue = useMemo(() => {
-    const sanitized = (selectedPlan?.price ?? '0').replace(/,/g, '');
-    const numeric = Number(sanitized);
+    const numeric = Number(selectedPlan?.price ?? 0);
     return Number.isNaN(numeric) ? 0 : numeric;
   }, [selectedPlan]);
 
@@ -137,6 +177,10 @@ const Register: React.FC<RegisterProps> = ({
   const handleDetailsSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSubmitting) return;
+    if (!planId) {
+      setApiError('Please select a membership plan.');
+      return;
+    }
 
     setIsSubmitting(true);
     setApiError('');
@@ -151,7 +195,8 @@ const Register: React.FC<RegisterProps> = ({
         body: JSON.stringify({
           full_name: fullName,
           email,
-          phone
+          phone,
+          plan_id: planId
         })
       });
 
@@ -200,6 +245,7 @@ const Register: React.FC<RegisterProps> = ({
 
       const member = payload?.data?.member;
       const token = payload?.data?.download_token;
+      const invoice = payload?.data?.invoice;
       if (member?.id) {
         setMemberApiId(member.id);
       }
@@ -209,6 +255,9 @@ const Register: React.FC<RegisterProps> = ({
       }
       if (token) {
         setMemberDownloadToken(token);
+      }
+      if (invoice?.id) {
+        setMemberInvoiceId(invoice.id);
       }
 
       setShowVerified(true);
@@ -325,13 +374,69 @@ const Register: React.FC<RegisterProps> = ({
     }
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (isProcessingPayment) return;
     setIsProcessingPayment(true);
-    paymentTimeoutRef.current = window.setTimeout(() => {
+    setApiError('');
+
+    try {
+      let invoiceId = memberInvoiceId;
+
+      if (!invoiceId && memberApiId) {
+        const invoiceResponse = await fetch(`${apiBaseUrl}/api/members/${memberApiId}/invoice`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json'
+          }
+        });
+        const invoicePayload = await invoiceResponse.json().catch(() => null);
+        if (invoiceResponse.ok && invoicePayload?.data?.invoice?.id) {
+          invoiceId = invoicePayload.data.invoice.id;
+          setMemberInvoiceId(invoiceId);
+        }
+      }
+
+      if (!invoiceId) {
+        setApiError('Unable to locate your invoice. Please try again.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      if (!memberApiId) {
+        setApiError('Unable to confirm your membership. Please try again.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/payments/record`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({
+          invoice_id: invoiceId,
+          member_id: memberApiId,
+          payment_method: paymentMethod
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setApiError(payload?.message || 'Unable to record payment.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      paymentTimeoutRef.current = window.setTimeout(() => {
+        setIsProcessingPayment(false);
+        setStep('success');
+      }, 900);
+    } catch (error) {
+      setApiError('Unable to connect to the server.');
       setIsProcessingPayment(false);
-      setStep('success');
-    }, 900);
+    }
   };
 
   const handleDownloadVirtualId = async () => {
@@ -466,23 +571,34 @@ const Register: React.FC<RegisterProps> = ({
       <div className="space-y-3">
         <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Selected Membership Plan</label>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {PRICING_PLANS.map((plan) => {
+          {plans.map((plan) => {
             const isSelected = plan.id === planId;
             return (
               <button
                 key={plan.id}
                 type="button"
-                onClick={() => setPlanId(plan.id)}
+                onClick={() => {
+                  setPlanId(plan.id);
+                  window.sessionStorage.setItem('selectedMembershipPlanId', String(plan.id));
+                }}
                 className={`text-left rounded-2xl border p-4 transition-all ${
                   isSelected
                     ? 'border-primary bg-primary/5 shadow-md'
                     : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'
                 }`}
+                disabled={isLoadingPlans}
               >
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-zinc-900">{plan.name}</p>
-                    <p className="text-xs text-zinc-500">PHP {plan.price}/mo</p>
+                    <p className="text-xs text-zinc-500">
+                      PHP {Number(plan.price).toLocaleString('en-PH')}
+                      {plan.duration === 'day'
+                        ? '/day'
+                        : plan.duration_count === 1
+                          ? '/month'
+                          : `/${plan.duration_count} months`}
+                    </p>
                   </div>
                   <div
                     className={`h-4 w-4 rounded-full border ${
@@ -491,18 +607,27 @@ const Register: React.FC<RegisterProps> = ({
                   ></div>
                 </div>
                 <p className="mt-3 text-xs text-zinc-500">
-                  {plan.features[0]}
+                  {plan.features[0] ?? 'Premium gym access'}
                 </p>
               </button>
             );
           })}
         </div>
+        {isLoadingPlans && (
+          <p className="text-xs text-zinc-400">Loading plans...</p>
+        )}
+        {!isLoadingPlans && plans.length === 0 && (
+          <p className="text-xs text-zinc-400">No plans available right now.</p>
+        )}
+        {planError && (
+          <p className="text-xs text-red-500">{planError}</p>
+        )}
       </div>
       <Button
         size="lg"
         className="w-full py-5"
         style={{ backgroundColor: 'rgb(127, 127, 127)' }}
-        disabled={isSubmitting}
+        disabled={isSubmitting || isLoadingPlans || plans.length === 0 || !planId}
       >
         {isSubmitting ? 'Submitting...' : 'Continue'}
       </Button>
@@ -615,11 +740,17 @@ const Register: React.FC<RegisterProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Selected Plan</p>
-            <h3 className="text-2xl font-bold text-zinc-900">{selectedPlan?.name}</h3>
+            <h3 className="text-2xl font-bold text-zinc-900">{selectedPlan?.name ?? 'Membership Plan'}</h3>
           </div>
           <div className="text-right">
-            <p className="text-xs text-zinc-400">Monthly</p>
-            <p className="text-2xl font-black text-zinc-900">PHP {selectedPlan?.price}</p>
+            <p className="text-xs text-zinc-400">
+              {selectedPlan?.duration === 'day'
+                ? 'Daily'
+                : selectedPlan?.duration_count === 1
+                  ? 'Monthly'
+                  : `${selectedPlan?.duration_count ?? 1} Months`}
+            </p>
+            <p className="text-2xl font-black text-zinc-900">PHP {formattedPrice(priceValue)}</p>
           </div>
         </div>
         <div className="mt-6 border-t border-zinc-200 pt-6 space-y-3 text-sm text-zinc-500">
@@ -762,7 +893,7 @@ const Register: React.FC<RegisterProps> = ({
             </div>
             <div className="flex items-center justify-between">
               <span>Plan</span>
-              <span>{selectedPlan?.name}</span>
+              <span>{selectedPlan?.name ?? 'Membership Plan'}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>Amount Paid</span>
@@ -827,7 +958,7 @@ const Register: React.FC<RegisterProps> = ({
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Virtual Member ID</p>
               <h4 className="text-xl font-bold text-zinc-900">{fullName || 'Member Name'}</h4>
-              <p className="text-xs text-zinc-500 mt-1">{selectedPlan?.name} Plan</p>
+              <p className="text-xs text-zinc-500 mt-1">{selectedPlan?.name ?? 'Membership'} Plan</p>
             </div>
             <div className="text-right">
               <div className="text-lg font-extrabold tracking-tight text-zinc-900">
@@ -853,7 +984,7 @@ const Register: React.FC<RegisterProps> = ({
               </div>
               <div className="flex items-center justify-between">
                 <span>Access Level</span>
-                <span>{selectedPlan?.name}</span>
+                <span>{selectedPlan?.name ?? 'Membership'}</span>
               </div>
             </div>
 

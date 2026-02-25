@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\Members;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Members\ResendMemberCodeRequest;
 use App\Http\Requests\Members\VerifyMemberRequest;
+use App\Http\Resources\InvoiceResource;
 use App\Http\Resources\MemberResource;
 use App\Models\Member;
+use App\Services\Billing\InvoiceService;
 use App\Services\Members\MemberAccessService;
 use App\Services\Members\MemberVerificationService;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +17,8 @@ class MemberVerificationController extends ApiController
 {
     public function __construct(
         protected MemberVerificationService $verificationService,
-        protected MemberAccessService $accessService
+        protected MemberAccessService $accessService,
+        protected InvoiceService $invoiceService
     ) {
     }
 
@@ -29,8 +32,14 @@ class MemberVerificationController extends ApiController
         }
 
         if ($member->is_verified) {
+            try {
+                $invoice = $this->invoiceService->createForMember($member);
+            } catch (\RuntimeException $exception) {
+                return $this->error($exception->getMessage(), 422);
+            }
             return $this->success([
                 'member' => new MemberResource($member),
+                'invoice' => new InvoiceResource($invoice),
                 'download_token' => $this->accessService->issueDownloadToken($member),
             ], 'Email already verified.');
         }
@@ -42,9 +51,15 @@ class MemberVerificationController extends ApiController
         }
 
         $downloadToken = $this->accessService->issueDownloadToken($member);
+        try {
+            $invoice = $this->invoiceService->createForMember($member->refresh());
+        } catch (\RuntimeException $exception) {
+            return $this->error($exception->getMessage(), 422);
+        }
 
         return $this->success([
             'member' => new MemberResource($member->refresh()),
+            'invoice' => new InvoiceResource($invoice),
             'download_token' => $downloadToken,
         ], 'Email verified successfully.');
     }
