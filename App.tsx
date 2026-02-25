@@ -1,5 +1,5 @@
-
 import React, { useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Programs from './components/Programs';
@@ -16,20 +16,32 @@ import MembershipPlans from './components/dashboard/MembershipPlans';
 import Invoices from './components/dashboard/Invoices';
 import Payments from './components/dashboard/Payments';
 import Attendance from './components/dashboard/Attendance';
+import type { DashboardTabId } from './services/dashboardDeepLink';
 
-type View = 'landing' | 'login' | 'register' | 'dashboard';
-type DashboardTab = 'dashboard' | 'members' | 'plans' | 'invoices' | 'payments' | 'attendance';
+const DASHBOARD_TABS: DashboardTabId[] = ['dashboard', 'members', 'plans', 'invoices', 'payments', 'attendance'];
 
-const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<View>('landing');
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('dashboard');
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(() => {
-    const raw = window.sessionStorage.getItem('selectedMembershipPlanId');
-    if (!raw) return null;
-    const parsed = Number(raw);
-    return Number.isNaN(parsed) ? null : parsed;
-  });
+const getDashboardTabFromPath = (pathname: string): DashboardTabId => {
+  const parts = pathname.split('/').filter(Boolean);
+  const tab = (parts[1] ?? 'dashboard') as DashboardTabId;
+  return DASHBOARD_TABS.includes(tab) ? tab : 'dashboard';
+};
+
+const getInitialSelectedPlanId = (): number | null => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.sessionStorage.getItem('selectedMembershipPlanId');
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const AppRoutes: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(getInitialSelectedPlanId);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  const baseUrl = (import.meta as ImportMeta).env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
   const getCookie = (name: string) => {
     const match = document.cookie.match(new RegExp(`(^|;\\s*)${name}=([^;]*)`));
@@ -37,8 +49,6 @@ const App: React.FC = () => {
   };
 
   const logoutAdmin = async () => {
-    const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
-
     try {
       await fetch(`${baseUrl}/sanctum/csrf-cookie`, { credentials: 'include' });
       const xsrfToken = getCookie('XSRF-TOKEN');
@@ -47,46 +57,71 @@ const App: React.FC = () => {
         method: 'POST',
         credentials: 'include',
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
           ...(xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}),
         },
       });
     } catch {
-      // Ignore logout failures; we still clear local state.
+      // Ignore logout failures; local auth state will still be cleared.
     }
-  };
-
-  const navigateTo = (view: View) => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setCurrentView(view);
   };
 
   useEffect(() => {
     const checkSession = async () => {
-      const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
-
       try {
         const response = await fetch(`${baseUrl}/admin/dashboard`, {
           credentials: 'include',
           headers: {
-            'Accept': 'application/json',
+            Accept: 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
           },
         });
-
-        if (response.ok) {
-          setCurrentView('dashboard');
-        }
+        setIsAuthenticated(response.ok);
       } catch {
-        // Ignore bootstrapping errors.
+        setIsAuthenticated(false);
       } finally {
         setIsBootstrapping(false);
       }
     };
 
     checkSession();
-  }, []);
+  }, [baseUrl]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [location.pathname]);
+
+  const clearPlanSelection = () => {
+    setSelectedPlanId(null);
+    window.sessionStorage.removeItem('selectedMembershipPlanId');
+  };
+
+  const setPlanSelection = (planId: number) => {
+    setSelectedPlanId(planId);
+    window.sessionStorage.setItem('selectedMembershipPlanId', String(planId));
+  };
+
+  const activeTab = getDashboardTabFromPath(location.pathname);
+
+  const renderDashboardContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'members':
+        return <Members />;
+      case 'plans':
+        return <MembershipPlans />;
+      case 'invoices':
+        return <Invoices />;
+      case 'payments':
+        return <Payments />;
+      case 'attendance':
+        return <Attendance />;
+      default:
+        return <Dashboard />;
+    }
+  };
 
   if (isBootstrapping) {
     return (
@@ -96,79 +131,35 @@ const App: React.FC = () => {
     );
   }
 
-  const renderDashboardContent = () => {
-    switch (dashboardTab) {
-      case 'dashboard': return <Dashboard />;
-      case 'members': return <Members />;
-      case 'plans': return <MembershipPlans />;
-      case 'invoices': return <Invoices />;
-      case 'payments': return <Payments />;
-      case 'attendance': return <Attendance />;
-      default: return <Dashboard />;
-    }
-  };
-
-  if (currentView === 'dashboard') {
-    return (
-      <DashboardLayout 
-        activeTab={dashboardTab} 
-        onTabChange={(id) => setDashboardTab(id as DashboardTab)}
-        onLogout={async () => {
-          await logoutAdmin();
-          navigateTo('landing');
-        }}
-      >
-        {renderDashboardContent()}
-      </DashboardLayout>
-    );
-  }
-
-  if (currentView === 'login') {
-    return (
-      <Login 
-        onLogin={() => navigateTo('dashboard')} 
-        onNavigateToRegister={() => navigateTo('register')}
-        onBackToLanding={() => navigateTo('landing')}
-      />
-    );
-  }
-
-  if (currentView === 'register') {
-    return (
-      <Register 
-        onRegister={() => navigateTo('dashboard')} 
-        onNavigateToLogin={() => navigateTo('login')}
-        onBackToLanding={() => navigateTo('landing')}
-        preselectedPlanId={selectedPlanId}
-      />
-    );
-  }
-
-  return (
+  const landingElement = (
     <div className="min-h-screen bg-white selection:bg-primary selection:text-white font-inter">
-      <Navbar onNavigate={(v) => { 
-        if (v === 'register') {
-          setSelectedPlanId(null);
-          window.sessionStorage.removeItem('selectedMembershipPlanId');
-        }
-        navigateTo(v as View); 
-      }} />
+      <Navbar
+        onNavigate={(view) => {
+          if (view === 'landing') navigate('/');
+          if (view === 'login') navigate('/login');
+          if (view === 'register') {
+            clearPlanSelection();
+            navigate('/register');
+          }
+        }}
+      />
       <main>
-        <Hero onJoin={() => {
-          setSelectedPlanId(null);
-          window.sessionStorage.removeItem('selectedMembershipPlanId');
-          navigateTo('register');
-        }} />
+        <Hero
+          onJoin={() => {
+            clearPlanSelection();
+            navigate('/register');
+          }}
+        />
         <Programs />
         <AIConcierge />
         <Trainers />
-        <Pricing onJoin={(planId) => {
-          setSelectedPlanId(planId);
-          window.sessionStorage.setItem('selectedMembershipPlanId', String(planId));
-          navigateTo('register');
-        }} />
-        
-        {/* Call to Action Section */}
+        <Pricing
+          onJoin={(planId) => {
+            setPlanSelection(planId);
+            navigate('/register');
+          }}
+        />
+
         <section className="py-24 bg-white">
           <div className="container mx-auto px-6 md:px-12">
             <div className="relative rounded-[2.5rem] bg-zinc-900 p-12 md:p-24 overflow-hidden">
@@ -177,7 +168,7 @@ const App: React.FC = () => {
                   <circle cx="200" cy="200" r="150" />
                 </svg>
               </div>
-              
+
               <div className="relative z-10 max-w-2xl">
                 <h2 className="text-4xl md:text-6xl font-extrabold text-white mb-8 tracking-tight">
                   Ready to transcend?
@@ -186,11 +177,10 @@ const App: React.FC = () => {
                   Join a community of focused high-performers. Your transformation begins with a single step.
                 </p>
                 <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                  <button 
+                  <button
                     onClick={() => {
-                      setSelectedPlanId(null);
-                      window.sessionStorage.removeItem('selectedMembershipPlanId');
-                      navigateTo('register');
+                      clearPlanSelection();
+                      navigate('/register');
                     }}
                     className="bg-primary text-white px-10 py-5 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-xl shadow-primary/20"
                   >
@@ -208,6 +198,96 @@ const App: React.FC = () => {
       <Footer />
     </div>
   );
+
+  return (
+    <Routes>
+      <Route path="/" element={landingElement} />
+
+      <Route
+        path="/login"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <Login
+              onLogin={() => {
+                setIsAuthenticated(true);
+                navigate('/dashboard');
+              }}
+              onNavigateToRegister={() => navigate('/register')}
+              onBackToLanding={() => navigate('/')}
+            />
+          )
+        }
+      />
+
+      <Route
+        path="/register"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <Register
+              onRegister={() => {
+                setIsAuthenticated(true);
+                navigate('/dashboard');
+              }}
+              onNavigateToLogin={() => navigate('/login')}
+              onBackToLanding={() => navigate('/')}
+              preselectedPlanId={selectedPlanId}
+            />
+          )
+        }
+      />
+
+      <Route
+        path="/dashboard"
+        element={
+          isAuthenticated ? (
+            <DashboardLayout
+              activeTab={activeTab}
+              onTabChange={(id) => navigate(id === 'dashboard' ? '/dashboard' : `/dashboard/${id}`)}
+              onLogout={async () => {
+                await logoutAdmin();
+                setIsAuthenticated(false);
+                navigate('/');
+              }}
+            >
+              {renderDashboardContent()}
+            </DashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route
+        path="/dashboard/:tab"
+        element={
+          isAuthenticated ? (
+            <DashboardLayout
+              activeTab={activeTab}
+              onTabChange={(id) => navigate(id === 'dashboard' ? '/dashboard' : `/dashboard/${id}`)}
+              onLogout={async () => {
+                await logoutAdmin();
+                setIsAuthenticated(false);
+                navigate('/');
+              }}
+            >
+              {renderDashboardContent()}
+            </DashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 };
 
+const App: React.FC = () => <AppRoutes />;
+
 export default App;
+
