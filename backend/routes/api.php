@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\Auth\LoginController;
 use App\Http\Controllers\Api\Auth\LogoutController;
 use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
+use App\Http\Controllers\Api\Auth\ForgotPasswordController;
+use App\Http\Controllers\Api\Auth\ResetPasswordController;
 use App\Http\Controllers\Api\Auth\VerificationController;
 use App\Http\Controllers\Api\AI\ConciergeController;
 use App\Http\Controllers\Api\MembershipPlans\MembershipPlanController as PublicMembershipPlanController;
@@ -30,6 +32,10 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:auth-verify');
         Route::post('/resend-code', [VerificationController::class, 'resend'])
             ->middleware('throttle:auth-resend');
+        Route::post('/forgot-password', ForgotPasswordController::class)
+            ->middleware('throttle:auth-forgot');
+        Route::post('/reset-password', ResetPasswordController::class)
+            ->middleware('throttle:auth-reset');
 
         Route::post('/logout', LogoutController::class)
             ->middleware(['auth:sanctum', 'verified']);

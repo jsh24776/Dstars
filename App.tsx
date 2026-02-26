@@ -17,13 +17,42 @@ import Invoices from './components/dashboard/Invoices';
 import Payments from './components/dashboard/Payments';
 import Attendance from './components/dashboard/Attendance';
 import type { DashboardTabId } from './services/dashboardDeepLink';
+import MemberLayout, { type MemberTabId } from './components/member/layout/MemberLayout';
+import MemberDashboard from './components/member/MemberDashboard';
+import MemberMembership from './components/member/MemberMembership';
+import MemberBilling from './components/member/MemberBilling';
+import MemberAttendance from './components/member/MemberAttendance';
+import MemberProfile from './components/member/MemberProfile';
+import MemberLogin from './components/member/auth/MemberLogin';
+import MemberForgotPassword from './components/member/auth/MemberForgotPassword';
+import MemberResetPassword from './components/member/auth/MemberResetPassword';
+import {
+  clearMemberSession,
+  fetchMemberMe,
+  loadMemberAttendance,
+  loadMemberBilling,
+  loadMemberPlanSummary,
+  loadMemberProfile,
+  loadMemberSession,
+  logoutMember,
+  saveMemberProfile,
+  submitPlanChangeRequest,
+  type MemberSession,
+} from './services/memberPortalService';
 
 const DASHBOARD_TABS: DashboardTabId[] = ['dashboard', 'members', 'plans', 'invoices', 'payments', 'attendance'];
+const MEMBER_TABS: MemberTabId[] = ['dashboard', 'membership', 'billing', 'attendance', 'profile'];
 
 const getDashboardTabFromPath = (pathname: string): DashboardTabId => {
   const parts = pathname.split('/').filter(Boolean);
   const tab = (parts[1] ?? 'dashboard') as DashboardTabId;
   return DASHBOARD_TABS.includes(tab) ? tab : 'dashboard';
+};
+
+const getMemberTabFromPath = (pathname: string): MemberTabId => {
+  const parts = pathname.split('/').filter(Boolean);
+  const tab = (parts[1] ?? 'dashboard') as MemberTabId;
+  return MEMBER_TABS.includes(tab) ? tab : 'dashboard';
 };
 
 const getInitialSelectedPlanId = (): number | null => {
@@ -39,7 +68,8 @@ const AppRoutes: React.FC = () => {
   const navigate = useNavigate();
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(getInitialSelectedPlanId);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [memberSession, setMemberSession] = useState<MemberSession | null>(loadMemberSession);
 
   const baseUrl = (import.meta as ImportMeta).env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
@@ -77,9 +107,33 @@ const AppRoutes: React.FC = () => {
             'X-Requested-With': 'XMLHttpRequest',
           },
         });
-        setIsAuthenticated(response.ok);
+        setIsAdminAuthenticated(response.ok);
       } catch {
-        setIsAuthenticated(false);
+        setIsAdminAuthenticated(false);
+      }
+
+      const currentMemberSession = loadMemberSession();
+      if (!currentMemberSession) {
+        setMemberSession(null);
+        setIsBootstrapping(false);
+        return;
+      }
+
+      try {
+        const freshUser = await fetchMemberMe(currentMemberSession.token);
+        if (freshUser.role !== 'member') {
+          clearMemberSession();
+          setMemberSession(null);
+          setIsBootstrapping(false);
+          return;
+        }
+        setMemberSession({
+          ...currentMemberSession,
+          user: freshUser,
+        });
+      } catch {
+        clearMemberSession();
+        setMemberSession(null);
       } finally {
         setIsBootstrapping(false);
       }
@@ -103,6 +157,7 @@ const AppRoutes: React.FC = () => {
   };
 
   const activeTab = getDashboardTabFromPath(location.pathname);
+  const memberActiveTab = getMemberTabFromPath(location.pathname);
 
   const renderDashboardContent = () => {
     switch (activeTab) {
@@ -123,6 +178,40 @@ const AppRoutes: React.FC = () => {
     }
   };
 
+  const renderMemberContent = () => {
+    if (!memberSession) return null;
+
+    const plan = loadMemberPlanSummary(memberSession.user.email);
+    const billing = loadMemberBilling();
+    const attendance = loadMemberAttendance();
+    const profile = loadMemberProfile(memberSession.user);
+
+    switch (memberActiveTab) {
+      case 'dashboard':
+        return <MemberDashboard plan={plan} attendance={attendance} />;
+      case 'membership':
+        return (
+          <MemberMembership
+            plan={plan}
+            onRequestPlanChange={() => submitPlanChangeRequest(memberSession.user.email)}
+          />
+        );
+      case 'billing':
+        return <MemberBilling items={billing} />;
+      case 'attendance':
+        return <MemberAttendance items={attendance} />;
+      case 'profile':
+        return (
+          <MemberProfile
+            profile={profile}
+            onSaveProfile={(nextProfile) => saveMemberProfile(memberSession.user.email, nextProfile)}
+          />
+        );
+      default:
+        return <MemberDashboard plan={plan} attendance={attendance} />;
+    }
+  };
+
   if (isBootstrapping) {
     return (
       <div className="min-h-screen bg-white font-inter flex items-center justify-center text-zinc-500 text-sm font-semibold">
@@ -136,6 +225,7 @@ const AppRoutes: React.FC = () => {
       <Navbar
         onNavigate={(view) => {
           if (view === 'landing') navigate('/');
+          if (view === 'member-login') navigate('/member/login');
           if (view === 'login') navigate('/login');
           if (view === 'register') {
             clearPlanSelection();
@@ -206,12 +296,12 @@ const AppRoutes: React.FC = () => {
       <Route
         path="/login"
         element={
-          isAuthenticated ? (
+          isAdminAuthenticated ? (
             <Navigate to="/dashboard" replace />
           ) : (
             <Login
               onLogin={() => {
-                setIsAuthenticated(true);
+                setIsAdminAuthenticated(true);
                 navigate('/dashboard');
               }}
               onNavigateToRegister={() => navigate('/register')}
@@ -224,15 +314,15 @@ const AppRoutes: React.FC = () => {
       <Route
         path="/register"
         element={
-          isAuthenticated ? (
+          isAdminAuthenticated ? (
             <Navigate to="/dashboard" replace />
           ) : (
             <Register
               onRegister={() => {
-                setIsAuthenticated(true);
+                setIsAdminAuthenticated(true);
                 navigate('/dashboard');
               }}
-              onNavigateToLogin={() => navigate('/login')}
+              onNavigateToLogin={() => navigate('/member/login')}
               onBackToLanding={() => navigate('/')}
               preselectedPlanId={selectedPlanId}
             />
@@ -243,13 +333,13 @@ const AppRoutes: React.FC = () => {
       <Route
         path="/dashboard"
         element={
-          isAuthenticated ? (
+          isAdminAuthenticated ? (
             <DashboardLayout
               activeTab={activeTab}
               onTabChange={(id) => navigate(id === 'dashboard' ? '/dashboard' : `/dashboard/${id}`)}
               onLogout={async () => {
                 await logoutAdmin();
-                setIsAuthenticated(false);
+                setIsAdminAuthenticated(false);
                 navigate('/');
               }}
             >
@@ -264,13 +354,13 @@ const AppRoutes: React.FC = () => {
       <Route
         path="/dashboard/:tab"
         element={
-          isAuthenticated ? (
+          isAdminAuthenticated ? (
             <DashboardLayout
               activeTab={activeTab}
               onTabChange={(id) => navigate(id === 'dashboard' ? '/dashboard' : `/dashboard/${id}`)}
               onLogout={async () => {
                 await logoutAdmin();
-                setIsAuthenticated(false);
+                setIsAdminAuthenticated(false);
                 navigate('/');
               }}
             >
@@ -278,6 +368,93 @@ const AppRoutes: React.FC = () => {
             </DashboardLayout>
           ) : (
             <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      <Route
+        path="/member/login"
+        element={
+          memberSession ? (
+            <Navigate to="/member/dashboard" replace />
+          ) : (
+            <MemberLogin
+              onLogin={(session) => {
+                setMemberSession(session);
+                navigate('/member/dashboard');
+              }}
+              onForgotPassword={() => navigate('/member/forgot-password')}
+              onBackToLanding={() => navigate('/')}
+            />
+          )
+        }
+      />
+
+      <Route
+        path="/member/forgot-password"
+        element={
+          memberSession ? (
+            <Navigate to="/member/dashboard" replace />
+          ) : (
+            <MemberForgotPassword
+              onBackToLogin={() => navigate('/member/login')}
+              onGoToReset={() => navigate('/member/reset-password')}
+            />
+          )
+        }
+      />
+
+      <Route
+        path="/member/reset-password"
+        element={
+          memberSession ? (
+            <Navigate to="/member/dashboard" replace />
+          ) : (
+            <MemberResetPassword onBackToLogin={() => navigate('/member/login')} />
+          )
+        }
+      />
+
+      <Route
+        path="/member/dashboard"
+        element={
+          memberSession ? (
+            <MemberLayout
+              activeTab={memberActiveTab}
+              memberName={memberSession.user.name}
+              onTabChange={(id) => navigate(id === 'dashboard' ? '/member/dashboard' : `/member/${id}`)}
+              onLogout={async () => {
+                await logoutMember(memberSession.token);
+                setMemberSession(null);
+                navigate('/member/login');
+              }}
+            >
+              {renderMemberContent()}
+            </MemberLayout>
+          ) : (
+            <Navigate to="/member/login" replace />
+          )
+        }
+      />
+
+      <Route
+        path="/member/:tab"
+        element={
+          memberSession ? (
+            <MemberLayout
+              activeTab={memberActiveTab}
+              memberName={memberSession.user.name}
+              onTabChange={(id) => navigate(id === 'dashboard' ? '/member/dashboard' : `/member/${id}`)}
+              onLogout={async () => {
+                await logoutMember(memberSession.token);
+                setMemberSession(null);
+                navigate('/member/login');
+              }}
+            >
+              {renderMemberContent()}
+            </MemberLayout>
+          ) : (
+            <Navigate to="/member/login" replace />
           )
         }
       />
@@ -290,4 +467,3 @@ const AppRoutes: React.FC = () => {
 const App: React.FC = () => <AppRoutes />;
 
 export default App;
-

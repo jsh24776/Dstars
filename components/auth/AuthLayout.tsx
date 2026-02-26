@@ -7,6 +7,7 @@ interface AuthLayoutProps {
   subtitle: string;
   image: string;
   maxWidthClass?: string;
+  contentPaddingClass?: string;
 }
 
 const AuthLayout: React.FC<AuthLayoutProps> = ({ 
@@ -14,7 +15,8 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
   title, 
   subtitle, 
   image, 
-  maxWidthClass = 'max-w-md' 
+  maxWidthClass = 'max-w-md',
+  contentPaddingClass = 'p-8 md:p-16'
 }) => {
   return (
     <div className="min-h-screen flex bg-white font-inter">
@@ -33,7 +35,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
           </p>
         </div>
       </div>
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-16">
+      <div className={`w-full lg:w-1/2 flex items-center justify-center ${contentPaddingClass}`}>
         <div className={`w-full ${maxWidthClass}`}>
           <div className="mb-10 text-center lg:text-left">
             <h1 className="text-4xl font-extrabold text-zinc-900 tracking-tight mb-2">{title}</h1>

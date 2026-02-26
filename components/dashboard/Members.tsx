@@ -522,14 +522,14 @@ const Members: React.FC = () => {
           <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Showing {members.length} of {total} results</span>
           <div className="flex space-x-2">
             <button
-              className="px-4 py-2 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-400 hover:bg-white transition-all disabled:opacity-30"
+              className="px-4 py-2 border border-zinc-200 rounded-xl text-xs font-bold text-black-800 hover:bg-white transition-all disabled:opacity-30"
               disabled={page <= 1}
               onClick={() => loadMembers(page - 1)}
             >
               Previous
             </button>
             <button
-              className="px-4 py-2 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-400 hover:bg-white transition-all disabled:opacity-30"
+              className="px-4 py-2 border border-zinc-200 rounded-xl text-xs font-bold text-black-400 hover:bg-white transition-all disabled:opacity-30"
               disabled={page >= lastPage}
               onClick={() => loadMembers(page + 1)}
             >

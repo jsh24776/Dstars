@@ -17,6 +17,7 @@ class PendingMemberRegistration extends Model
         'email',
         'phone',
         'plan_id',
+        'password',
         'verification_code',
         'verification_expires_at',
         'resend_available_at',
@@ -38,4 +39,3 @@ class PendingMemberRegistration extends Model
         return $this->belongsTo(MembershipPlan::class, 'plan_id');
     }
 }
-

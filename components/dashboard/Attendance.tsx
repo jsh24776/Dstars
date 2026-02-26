@@ -229,7 +229,7 @@ const Attendance: React.FC = () => {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight">Check-Ins</h1>
+          <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight">Attendance</h1>
           <p className="text-zinc-500 mt-1">Live gym activity and membership-aware access tracking.</p>
         </div>
         <div className="flex items-center gap-3">

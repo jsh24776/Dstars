@@ -5,7 +5,9 @@ namespace App\Services\Members;
 use App\Models\PendingMemberRegistration;
 use App\Models\MembershipPlan;
 use App\Models\Member;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class MemberRegistrationService
 {
@@ -18,6 +20,9 @@ class MemberRegistrationService
     {
         return DB::transaction(function () use ($data, $cooldownKey) {
             if (Member::where('email', strtolower($data['email']))->exists()) {
+                throw new \RuntimeException('This email already exists.');
+            }
+            if (User::where('email', strtolower($data['email']))->exists()) {
                 throw new \RuntimeException('This email already exists.');
             }
 
@@ -36,6 +41,7 @@ class MemberRegistrationService
                     'full_name' => $data['full_name'],
                     'phone' => $data['phone'],
                     'plan_id' => $plan->id,
+                    'password' => Hash::make($data['password']),
                     'verification_code' => null,
                     'verification_expires_at' => null,
                     'resend_available_at' => null,
@@ -57,6 +63,9 @@ class MemberRegistrationService
             if (Member::where('email', strtolower($pending->email))->exists()) {
                 throw new \RuntimeException('This email already exists.');
             }
+            if (! $pending->password) {
+                throw new \RuntimeException('Registration password was not set. Please register again.');
+            }
 
             $member = Member::create([
                 'full_name' => $pending->full_name,
@@ -68,6 +77,18 @@ class MemberRegistrationService
 
             $member->forceFill([
                 'membership_id' => $this->formatMembershipId($member->id),
+            ])->save();
+
+            $user = User::create([
+                'name' => $member->full_name,
+                'email' => strtolower($member->email),
+                'password' => $pending->password,
+                'role' => 'member',
+                'is_active' => true,
+            ]);
+
+            $user->forceFill([
+                'email_verified_at' => now(),
             ])->save();
 
             $pending->delete();

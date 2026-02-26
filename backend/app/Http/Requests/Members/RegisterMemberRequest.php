@@ -16,8 +16,16 @@ class RegisterMemberRequest extends FormRequest
     {
         return [
             'full_name' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'string', 'email:rfc,dns', 'max:190', 'unique:members,email'],
+            'email' => [
+                'required',
+                'string',
+                'email:rfc,dns',
+                'max:190',
+                'unique:members,email',
+                'unique:users,email',
+            ],
             'phone' => ['required', 'string', 'max:30'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
             'plan_id' => [
                 'required',
                 'integer',
@@ -30,6 +38,8 @@ class RegisterMemberRequest extends FormRequest
     {
         return [
             'email.unique' => 'This email already exists.',
+            'password.confirmed' => 'Password confirmation does not match.',
+            'password.min' => 'Password must be at least 8 characters.',
             'plan_id.exists' => 'Selected membership plan is invalid.',
         ];
     }

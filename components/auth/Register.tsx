@@ -22,6 +22,8 @@ const Register: React.FC<RegisterProps> = ({
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [planId, setPlanId] = useState<number | null>(preselectedPlanId ?? null);
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
@@ -198,7 +200,9 @@ const Register: React.FC<RegisterProps> = ({
           full_name: fullName,
           email,
           phone,
-          plan_id: planId
+          plan_id: planId,
+          password,
+          password_confirmation: passwordConfirmation,
         })
       });
 
@@ -537,7 +541,7 @@ const Register: React.FC<RegisterProps> = ({
     <form className="space-y-6" onSubmit={handleDetailsSubmit}>
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-5">
         <p className="text-sm text-zinc-500">
-          Minimal details. No password. Average time to complete: under 60 seconds.
+          Minimal details. Set your member portal password. Average time to complete: under 60 seconds.
         </p>
       </div>
 
@@ -571,6 +575,30 @@ const Register: React.FC<RegisterProps> = ({
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           className="w-full px-5 py-3.5 bg-white border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-zinc-900"
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Password</label>
+        <input
+          type="password"
+          placeholder="At least 8 characters"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          className="w-full px-5 py-3.5 bg-white border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-zinc-900"
+          minLength={8}
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Confirm Password</label>
+        <input
+          type="password"
+          placeholder="Re-enter password"
+          value={passwordConfirmation}
+          onChange={(event) => setPasswordConfirmation(event.target.value)}
+          className="w-full px-5 py-3.5 bg-white border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-zinc-900"
+          minLength={8}
           required
         />
       </div>
@@ -651,7 +679,7 @@ const Register: React.FC<RegisterProps> = ({
         <p className="text-zinc-500 text-sm">
           Already a member?{' '}
           <button type="button" onClick={onNavigateToLogin} className="text-primary font-bold hover:underline">
-            Sign in
+            Sign in to Member Portal
           </button>
         </p>
         <button
@@ -1067,7 +1095,8 @@ const Register: React.FC<RegisterProps> = ({
       title={headerTitle}
       subtitle={headerSubtitle}
       image="/imgs/back.jpg"
-      maxWidthClass="max-w-2xl"
+      maxWidthClass="max-w-xl"
+      contentPaddingClass="p-6 md:p-10 lg:p-12"
     >
       <div key={step} style={{ animation: 'fadeIn 0.4s ease' }}>
         {renderStepIndicator()}
