@@ -48,4 +48,5 @@ Route::prefix('admin/api')
         Route::get('/attendance/summary', [AdminAttendanceController::class, 'summary']);
         Route::get('/attendance', [AdminAttendanceController::class, 'index']);
         Route::get('/attendance/{member}', [AdminAttendanceController::class, 'showMemberHistory']);
+        Route::delete('/attendance/check-ins/{checkIn}', [AdminAttendanceController::class, 'destroy']);
     });

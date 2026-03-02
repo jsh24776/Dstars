@@ -79,7 +79,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateToRegister, onBackToLa
   return (
     <AuthLayout 
       title="Welcome back."  
-      subtitle="Enter your credentials to access your performance dashboard."
+      subtitle="Enter your credentials to access Dstars Admin Portal."
       image="/imgs/barb.jpg"
     >
       <form className="space-y-6" onSubmit={handleSubmit}>
@@ -136,11 +136,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateToRegister, onBackToLa
           {isSubmitting ? 'Signing In...' : 'Sign In'}
         </Button>
         <div className="text-center pt-4">
-          <p className="text-zinc-500 text-sm">
-            Don't have an account? {' '}
-            <button type="button" onClick={onNavigateToRegister} className="text-primary font-bold hover:underline">Apply now</button>
-          </p>
-          <button type="button" onClick={onBackToLanding} className="mt-8 text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-zinc-900 transition-colors">
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="mt-2 text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-zinc-900 transition-colors"
+          >
             &larr; Back to Home
           </button>
         </div>

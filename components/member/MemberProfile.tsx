@@ -3,12 +3,18 @@ import type { MemberProfile as MemberProfileType } from '../../services/memberPo
 
 interface MemberProfileProps {
   profile: MemberProfileType;
-  onSaveProfile: (profile: MemberProfileType) => void;
+  onSaveProfile: (profile: MemberProfileType) => Promise<void> | void;
+  onChangePassword: (input: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) => Promise<void> | void;
 }
 
-const MemberProfile: React.FC<MemberProfileProps> = ({ profile, onSaveProfile }) => {
+const MemberProfile: React.FC<MemberProfileProps> = ({ profile, onSaveProfile, onChangePassword }) => {
   const [form, setForm] = useState<MemberProfileType>(profile);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -28,10 +34,16 @@ const MemberProfile: React.FC<MemberProfileProps> = ({ profile, onSaveProfile })
           <h3 className="text-2xl font-black text-zinc-900 tracking-tight mb-6">Personal Information</h3>
           <form
             className="space-y-5"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
-              onSaveProfile(form);
-              setMessage('Profile updated successfully.');
+              setMessage(null);
+              setError(null);
+              try {
+                await onSaveProfile(form);
+                setMessage('Profile updated successfully.');
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Unable to update profile.');
+              }
             }}
           >
             <input
@@ -71,6 +83,11 @@ const MemberProfile: React.FC<MemberProfileProps> = ({ profile, onSaveProfile })
                 {message}
               </div>
             )}
+            {error && (
+              <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 font-semibold">
+                {error}
+              </div>
+            )}
 
             <button className="px-6 py-3 bg-primary text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-xl shadow-primary/20 hover:opacity-95 transition-all">
               Save Profile
@@ -82,7 +99,7 @@ const MemberProfile: React.FC<MemberProfileProps> = ({ profile, onSaveProfile })
           <h3 className="text-2xl font-black text-zinc-900 tracking-tight mb-6">Change Password</h3>
           <form
             className="space-y-5"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
               if (passwordForm.newPassword.length < 8) {
                 setPasswordMessage('New password must be at least 8 characters.');
@@ -92,8 +109,13 @@ const MemberProfile: React.FC<MemberProfileProps> = ({ profile, onSaveProfile })
                 setPasswordMessage('Password confirmation does not match.');
                 return;
               }
-              setPasswordMessage('Password updated successfully.');
-              setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+              try {
+                await onChangePassword(passwordForm);
+                setPasswordMessage('Password updated successfully.');
+                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+              } catch (err) {
+                setPasswordMessage(err instanceof Error ? err.message : 'Unable to update password.');
+              }
             }}
           >
             <input

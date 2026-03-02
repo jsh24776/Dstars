@@ -19,9 +19,13 @@ import Attendance from './components/dashboard/Attendance';
 import type { DashboardTabId } from './services/dashboardDeepLink';
 import MemberLayout, { type MemberTabId } from './components/member/layout/MemberLayout';
 import MemberDashboard from './components/member/MemberDashboard';
+import MemberDashboardContainer from './components/member/MemberDashboardContainer';
 import MemberMembership from './components/member/MemberMembership';
+import MemberMembershipContainer from './components/member/MemberMembershipContainer';
 import MemberBilling from './components/member/MemberBilling';
+import MemberBillingContainer from './components/member/MemberBillingContainer';
 import MemberAttendance from './components/member/MemberAttendance';
+import MemberAttendanceContainer from './components/member/MemberAttendanceContainer';
 import MemberProfile from './components/member/MemberProfile';
 import MemberLogin from './components/member/auth/MemberLogin';
 import MemberForgotPassword from './components/member/auth/MemberForgotPassword';
@@ -37,6 +41,8 @@ import {
   logoutMember,
   saveMemberProfile,
   submitPlanChangeRequest,
+  updateMemberProfile,
+  updateMemberPassword,
   type MemberSession,
 } from './services/memberPortalService';
 
@@ -188,23 +194,54 @@ const AppRoutes: React.FC = () => {
 
     switch (memberActiveTab) {
       case 'dashboard':
-        return <MemberDashboard plan={plan} attendance={attendance} />;
+        return (
+          <MemberDashboardContainer
+            token={memberSession.token}
+            fallbackPlan={plan}
+            fallbackAttendance={attendance}
+          />
+        );
       case 'membership':
         return (
-          <MemberMembership
-            plan={plan}
-            onRequestPlanChange={() => submitPlanChangeRequest(memberSession.user.email)}
+          <MemberMembershipContainer
+            token={memberSession.token}
+            email={memberSession.user.email}
+            memberId={memberSession.user.id}
+            fallbackPlan={plan}
           />
         );
       case 'billing':
-        return <MemberBilling items={billing} />;
+        return (
+          <MemberBillingContainer
+            token={memberSession.token}
+            fallbackItems={billing}
+          />
+        );
       case 'attendance':
-        return <MemberAttendance items={attendance} />;
+        return (
+          <MemberAttendanceContainer
+            token={memberSession.token}
+            fallbackItems={attendance}
+          />
+        );
       case 'profile':
         return (
           <MemberProfile
             profile={profile}
-            onSaveProfile={(nextProfile) => saveMemberProfile(memberSession.user.email, nextProfile)}
+            onSaveProfile={async (nextProfile) => {
+              const updated = await updateMemberProfile(memberSession.token, {
+                full_name: nextProfile.fullName,
+                phone: nextProfile.phone || undefined,
+              });
+              saveMemberProfile(memberSession.user.email, updated);
+            }}
+            onChangePassword={async ({ currentPassword, newPassword, confirmPassword }) => {
+              await updateMemberPassword(memberSession.token, {
+                current_password: currentPassword,
+                new_password: newPassword,
+                new_password_confirmation: confirmPassword,
+              });
+            }}
           />
         );
       default:
@@ -384,6 +421,10 @@ const AppRoutes: React.FC = () => {
                 navigate('/member/dashboard');
               }}
               onForgotPassword={() => navigate('/member/forgot-password')}
+              onApply={() => {
+                clearPlanSelection();
+                navigate('/register');
+              }}
               onBackToLanding={() => navigate('/')}
             />
           )

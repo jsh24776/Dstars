@@ -4,13 +4,17 @@ namespace App\Models;
 
 use App\Enums\MemberStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\HasApiTokens;
 
-class Member extends Model
+class Member extends Authenticatable
 {
+    use HasApiTokens;
     use HasFactory;
+    use Notifiable;
     use SoftDeletes;
 
     /**
@@ -23,6 +27,7 @@ class Member extends Model
         'username',
         'email',
         'phone',
+        'password',
         'status',
         'membership_id',
         'membership_plan_id',
@@ -35,6 +40,9 @@ class Member extends Model
         'download_token_expires_at',
         'virtual_card_path',
         'is_verified',
+        'role',
+        'is_active',
+        'email_verified_at',
     ];
 
     /**
@@ -49,9 +57,22 @@ class Member extends Model
             'download_token_expires_at' => 'datetime',
             'is_verified' => 'boolean',
             'status' => MemberStatus::class,
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
             'membership_start_date' => 'date',
             'membership_end_date' => 'date',
         ];
+    }
+
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
+    }
+
+    public function getNameAttribute(): ?string
+    {
+        return $this->full_name;
     }
 
     public function membershipPlan()

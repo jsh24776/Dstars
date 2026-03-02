@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\Members\MemberRegisterController;
 use App\Http\Controllers\Api\Members\MemberCardController;
 use App\Http\Controllers\Api\Members\MemberValidationController;
 use App\Http\Controllers\Api\Members\MemberVerificationController;
+use App\Http\Controllers\Api\Member\MemberPortalController;
 use App\Http\Controllers\Api\Admin\MemberController as AdminMemberController;
 use App\Http\Controllers\Api\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
@@ -64,6 +65,21 @@ Route::prefix('v1')->group(function () {
             Route::get('/attendance/summary', [AdminAttendanceController::class, 'summary']);
             Route::get('/attendance', [AdminAttendanceController::class, 'index']);
             Route::get('/attendance/{member}', [AdminAttendanceController::class, 'showMemberHistory']);
+            Route::delete('/attendance/check-ins/{checkIn}', [AdminAttendanceController::class, 'destroy']);
+        });
+
+    Route::prefix('member')
+        ->middleware(['auth:sanctum', 'verified'])
+        ->group(function () {
+            Route::get('/dashboard', [MemberPortalController::class, 'dashboard']);
+            Route::get('/profile', [MemberPortalController::class, 'profile']);
+            Route::patch('/profile', [MemberPortalController::class, 'updateProfile']);
+            Route::patch('/password', [MemberPortalController::class, 'updatePassword']);
+            Route::get('/plan', [MemberPortalController::class, 'plan']);
+            Route::post('/plan-change-request', [MemberPortalController::class, 'requestPlanChange']);
+            Route::post('/apply-membership', [MemberPortalController::class, 'applyMembership']);
+            Route::get('/attendance', [MemberPortalController::class, 'attendance']);
+            Route::get('/billing', [MemberPortalController::class, 'billing']);
         });
 });
 
@@ -90,5 +106,4 @@ Route::prefix('members')->group(function () {
         ->name('members.validate');
 });
 
-Route::get('/membership-plans', [PublicMembershipPlanController::class, 'index'])
-    ->middleware('throttle:member-register');
+Route::get('/membership-plans', [PublicMembershipPlanController::class, 'index']);

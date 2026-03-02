@@ -2,25 +2,26 @@
 
 namespace App\Services\Auth;
 
-use App\Models\User;
+use App\Models\Member;
 use Illuminate\Support\Facades\Hash;
 
 class AuthService
 {
-    public function register(array $data): User
+    public function register(array $data): Member
     {
-        return User::create([
-            'name' => $data['name'],
+        return Member::create([
+            'full_name' => $data['name'],
             'email' => strtolower($data['email']),
+            'phone' => $data['phone'] ?? '',
             'password' => $data['password'],
             'role' => 'member',
             'is_active' => false,
         ]);
     }
 
-    public function attemptLogin(string $email, string $password): ?User
+    public function attemptLogin(string $email, string $password): ?Member
     {
-        $user = User::where('email', strtolower($email))->first();
+        $user = Member::where('email', strtolower($email))->first();
 
         if (! $user || ! Hash::check($password, $user->password)) {
             return null;

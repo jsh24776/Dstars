@@ -22,7 +22,6 @@ class RegisterMemberRequest extends FormRequest
                 'email:rfc,dns',
                 'max:190',
                 'unique:members,email',
-                'unique:users,email',
             ],
             'phone' => ['required', 'string', 'max:30'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],

@@ -134,3 +134,17 @@ export const fetchMemberAttendanceHistory = async (
     data: payload.data.map(parseAttendance),
   };
 };
+
+export const deleteAdminCheckIn = async (id: number): Promise<void> => {
+  const xsrfToken = getCookie('XSRF-TOKEN');
+  const response = await fetch(`${getApiBaseUrl()}/admin/api/attendance/check-ins/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      ...jsonHeaders,
+      ...(xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}),
+    },
+  });
+
+  await toPayload<{ data: unknown }>(response);
+};

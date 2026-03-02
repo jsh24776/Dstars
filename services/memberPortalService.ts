@@ -13,10 +13,15 @@ export interface MemberSession {
 
 export interface MemberPlanSummary {
   name: string;
-  status: 'active' | 'expired' | 'pending';
+  status: 'active' | 'expired' | 'pending' | 'inactive';
   expirationDate: string | null;
   nextPaymentDue: string | null;
   remainingSessions: number | null;
+  price?: number | null;
+  billingCycle?: string | null;
+  duration?: string | null;
+  durationCount?: number | null;
+  startDate?: string | null;
 }
 
 export interface MemberBillingItem {
@@ -26,6 +31,8 @@ export interface MemberBillingItem {
   method: string;
   status: 'paid' | 'pending' | 'failed';
   receiptLabel: string;
+  reference?: string | null;
+  planName?: string | null;
 }
 
 export interface MemberAttendanceItem {
@@ -81,6 +88,20 @@ export const clearMemberSession = () => {
   window.localStorage.removeItem(MEMBER_SESSION_KEY);
 };
 
+interface MemberDashboardQuickStats {
+  visitsThisMonth: number;
+  visitsOverall: number;
+  lastCheckInDate: string | null;
+  lastPaymentAmount: number | null;
+}
+
+interface MemberDashboardPayload {
+  plan: MemberPlanSummary;
+  attendance: MemberAttendanceItem[];
+  billing: MemberBillingItem[];
+  quickStats: MemberDashboardQuickStats;
+}
+
 export const loginMember = async (email: string, password: string): Promise<MemberSession> => {
   const response = await fetch(`${getApiBaseUrl()}/api/v1/auth/login`, {
     method: 'POST',
@@ -100,6 +121,38 @@ export const loginMember = async (email: string, password: string): Promise<Memb
 
   saveMemberSession(session);
   return session;
+};
+
+export const fetchMemberDashboard = async (token: string): Promise<MemberDashboardPayload> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/dashboard`, {
+    method: 'GET',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const payload = await readJson(response);
+  const plan = (payload?.data?.plan ?? null) as MemberPlanSummary | null;
+  const attendance = (payload?.data?.attendance ?? []) as MemberAttendanceItem[];
+  const billing = (payload?.data?.billing ?? []) as MemberBillingItem[];
+  const quickStats = (payload?.data?.quickStats ?? null) as MemberDashboardQuickStats | null;
+
+  if (!plan) {
+    throw new Error('Unable to load membership plan.');
+  }
+
+  return {
+    plan,
+    attendance,
+    billing,
+    quickStats: quickStats ?? {
+      visitsThisMonth: 0,
+      visitsOverall: 0,
+      lastCheckInDate: null,
+      lastPaymentAmount: null,
+    },
+  };
 };
 
 export const fetchMemberMe = async (token: string): Promise<MemberUser> => {
@@ -187,60 +240,238 @@ export const saveMemberProfile = (email: string, profile: MemberProfile) => {
   window.localStorage.setItem(profileStorageKey(email), JSON.stringify(profile));
 };
 
+export const fetchMemberProfile = async (token: string): Promise<MemberProfile> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/profile`, {
+    method: 'GET',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const payload = await readJson(response);
+  const profile = (payload?.data?.profile ?? null) as {
+    full_name: string;
+    email: string;
+    phone: string;
+  } | null;
+
+  if (!profile) {
+    throw new Error('Unable to load profile.');
+  }
+
+  return {
+    fullName: profile.full_name,
+    email: profile.email,
+    phone: profile.phone ?? '',
+    address: '',
+    emergencyContact: '',
+  };
+};
+
+export const updateMemberProfile = async (
+  token: string,
+  input: { full_name: string; phone?: string | null }
+): Promise<MemberProfile> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/profile`, {
+    method: 'PATCH',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  const payload = await readJson(response);
+  const profile = (payload?.data?.profile ?? null) as {
+    full_name: string;
+    email: string;
+    phone: string;
+  } | null;
+
+  if (!profile) {
+    throw new Error('Unable to update profile.');
+  }
+
+  return {
+    fullName: profile.full_name,
+    email: profile.email,
+    phone: profile.phone ?? '',
+    address: '',
+    emergencyContact: '',
+  };
+};
+
+export const updateMemberPassword = async (
+  token: string,
+  input: { current_password: string; new_password: string; new_password_confirmation: string }
+): Promise<string> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/password`, {
+    method: 'PATCH',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  const payload = await readJson(response);
+  return payload?.message ?? 'Password updated successfully.';
+};
+
 export const loadMemberPlanSummary = (email: string): MemberPlanSummary => {
   const requestRaw = window.localStorage.getItem(planRequestStorageKey(email));
   const hasPendingRequest = requestRaw === 'pending';
 
   return {
-    name: 'Professional Plan',
-    status: hasPendingRequest ? 'pending' : 'active',
-    expirationDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 28).toISOString(),
-    nextPaymentDue: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-    remainingSessions: 8,
+    name: 'Loading...',
+    status: hasPendingRequest ? 'pending' : 'inactive',
+    expirationDate: null,
+    nextPaymentDue: null,
+    remainingSessions: null,
   };
 };
 
-export const submitPlanChangeRequest = (email: string) => {
+export const fetchMemberPlanSummaryFromApi = async (token: string): Promise<MemberPlanSummary> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/plan`, {
+    method: 'GET',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const payload = await readJson(response);
+  const plan = (payload?.data?.plan ?? null) as MemberPlanSummary | null;
+  if (!plan) {
+    throw new Error('Unable to load membership plan.');
+  }
+  return plan;
+};
+
+export const submitMemberPlanChangeRequest = async (token: string, email: string): Promise<void> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/plan-change-request`, {
+    method: 'POST',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({}),
+  });
+
+  await readJson(response);
   window.localStorage.setItem(planRequestStorageKey(email.toLowerCase()), 'pending');
 };
 
+export interface ApplyMembershipResult {
+  memberId: number;
+  membershipId: string | null;
+  downloadToken: string | null;
+  invoiceId: number;
+  invoiceNumber: string;
+  invoiceTotalAmount: number;
+  invoicePlanName: string;
+}
+
+export const applyMemberMembership = async (token: string, planId: number): Promise<ApplyMembershipResult> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/apply-membership`, {
+    method: 'POST',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ plan_id: planId }),
+  });
+
+  const payload = await readJson(response);
+  const member = payload?.data?.member ?? null;
+  const invoice = payload?.data?.invoice ?? null;
+  const downloadToken = payload?.data?.download_token ?? null;
+
+  if (!member?.id || !invoice?.id) {
+    throw new Error('Unable to apply membership.');
+  }
+
+  return {
+    memberId: member.id as number,
+    membershipId: (member.membership_id as string | null) ?? null,
+    downloadToken: (downloadToken as string | null) ?? null,
+    invoiceId: invoice.id as number,
+    invoiceNumber: String(invoice.invoice_number ?? ''),
+    invoiceTotalAmount: Number(invoice.total_amount ?? 0),
+    invoicePlanName: String(invoice.plan_name ?? ''),
+  };
+};
+
+export interface RecordMemberPaymentResult {
+  paymentReference: string;
+  paidAt: string | null;
+  method: string;
+  amountPaid: number;
+}
+
+export const recordMemberPayment = async (
+  token: string,
+  input: { invoice_id: number; member_id: number; payment_method: 'gcash' | 'maya' },
+): Promise<RecordMemberPaymentResult> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/payments/record`, {
+    method: 'POST',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  const payload = await readJson(response);
+  const payment = payload?.data?.payment ?? null;
+
+  if (!payment?.id) {
+    throw new Error('Unable to record payment.');
+  }
+
+  return {
+    paymentReference: String(payment.payment_reference ?? ''),
+    paidAt: payment.paid_at ?? null,
+    method: String(payment.payment_method ?? ''),
+    amountPaid: Number(payment.amount_paid ?? 0),
+  };
+};
+
 export const loadMemberBilling = (): MemberBillingItem[] => {
-  return [
-    {
-      id: 'INV-2026-021',
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 31).toISOString(),
-      amount: 2299,
-      method: 'GCash',
-      status: 'paid',
-      receiptLabel: 'Receipt-Feb',
+  // fallback placeholder while real data loads
+  return [];
+};
+
+export const fetchMemberBillingFromApi = async (token: string): Promise<MemberBillingItem[]> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/billing`, {
+    method: 'GET',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
     },
-    {
-      id: 'INV-2026-020',
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 62).toISOString(),
-      amount: 2299,
-      method: 'Card',
-      status: 'paid',
-      receiptLabel: 'Receipt-Jan',
-    },
-  ];
+  });
+
+  const payload = await readJson(response);
+  const items = (payload?.data?.items ?? []) as MemberBillingItem[];
+  return items;
 };
 
 export const loadMemberAttendance = (): MemberAttendanceItem[] => {
-  return [
-    {
-      id: 'CHK-1001',
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString(),
-      timeIn: '06:12 PM',
+  // fallback placeholder while real data loads
+  return [];
+};
+
+export const fetchMemberAttendanceFromApi = async (token: string): Promise<MemberAttendanceItem[]> => {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/member/attendance`, {
+    method: 'GET',
+    headers: {
+      ...jsonHeaders,
+      Authorization: `Bearer ${token}`,
     },
-    {
-      id: 'CHK-1002',
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
-      timeIn: '05:44 PM',
-    },
-    {
-      id: 'CHK-1003',
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-      timeIn: '07:03 PM',
-    },
-  ];
+  });
+
+  const payload = await readJson(response);
+  const items = (payload?.data?.items ?? []) as MemberAttendanceItem[];
+  return items;
 };

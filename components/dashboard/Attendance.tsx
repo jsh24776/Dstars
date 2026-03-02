@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AttendanceRecord, AttendanceSummary } from '../../types';
 import {
   checkInMemberAttendance,
+  deleteAdminCheckIn,
   fetchAdminAttendance,
   fetchAdminAttendanceSummary,
   fetchMemberAttendanceHistory,
@@ -53,6 +54,7 @@ const Attendance: React.FC = () => {
   const [calendarMonth, setCalendarMonth] = useState(monthStart(new Date()));
   const [calendarRecords, setCalendarRecords] = useState<AttendanceRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(toIsoDate(new Date()));
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const loadListData = async () => {
     setIsLoading(true);
@@ -225,6 +227,18 @@ const Attendance: React.FC = () => {
     return rows;
   }, [calendarMonth, calendarMap]);
 
+  const handleDeleteTodayCheckIn = async (id: number) => {
+    try {
+      await deleteAdminCheckIn(id);
+      await loadListData();
+      if (viewMode === 'calendar') {
+        await loadCalendarData(calendarMonth);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete check-in.');
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
@@ -276,7 +290,41 @@ const Attendance: React.FC = () => {
 
       {viewMode === 'list' ? (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm overflow-hidden">
+          {/* Today's Check-Ins moved into the wide column position */}
+          <div className="xl:col-span-2 bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm p-6">
+            <h3 className="text-lg font-black text-zinc-900">Today&apos;s Check-Ins</h3>
+            <p className="text-xs text-zinc-400 mb-4">Members checked in today.</p>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {summary.today_check_ins.length > 0 ? (
+                summary.today_check_ins.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50/40 px-3 py-2"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-zinc-900">
+                        {record.member?.full_name ?? `Member #${record.member_id}`}
+                      </div>
+                      <div className="mt-1 text-[10px] text-zinc-500">
+                        {fmtDate(record.check_in_date)} at {fmtTime(record.check_in_time)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setPendingDeleteId(record.id)}
+                      className="px-3 py-2 rounded-xl border border-red-100 bg-red-50 text-[10px] font-bold uppercase tracking-widest text-red-600 hover:bg-red-100 transition-all"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs text-zinc-400">No check-ins yet today.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Check-Ins moved into the side column position */}
+          <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm overflow-hidden">
             <div className="px-8 py-6 border-b border-zinc-100">
               <h2 className="text-xl font-black text-zinc-900">Recent Check-Ins</h2>
               <p className="text-sm text-zinc-400">Latest member check-in records.</p>
@@ -319,27 +367,6 @@ const Attendance: React.FC = () => {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm p-6">
-            <h3 className="text-lg font-black text-zinc-900">Today&apos;s Check-Ins</h3>
-            <p className="text-xs text-zinc-400 mb-4">Members checked in today.</p>
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-              {summary.today_check_ins.length > 0 ? (
-                summary.today_check_ins.map((record) => (
-                  <div key={record.id} className="rounded-xl border border-zinc-100 bg-zinc-50/40 px-3 py-2">
-                    <div className="text-xs font-bold text-zinc-900">
-                      {record.member?.full_name ?? `Member #${record.member_id}`}
-                    </div>
-                    <div className="mt-1 text-[10px] text-zinc-500">
-                      {fmtDate(record.check_in_date)} at {fmtTime(record.check_in_time)}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-xs text-zinc-400">No check-ins yet today.</div>
-              )}
             </div>
           </div>
         </div>
@@ -451,6 +478,46 @@ const Attendance: React.FC = () => {
         <div className="rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-semibold text-red-600">
           {error}
         </div>
+      )}
+
+      {pendingDeleteId !== null && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-sm p-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-black text-zinc-900">Delete Check-In</h3>
+              <button
+                onClick={() => setPendingDeleteId(null)}
+                className="p-2 rounded-xl border border-zinc-200 text-zinc-400 hover:text-zinc-900"
+              >
+                X
+              </button>
+            </div>
+            <p className="text-sm text-zinc-500 mb-6">
+              Are you sure you want to delete this check-in? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteId(null)}
+                className="px-5 py-3 rounded-xl border border-zinc-200 text-xs font-bold uppercase tracking-widest text-zinc-500 hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (pendingDeleteId === null) return;
+                  await handleDeleteTodayCheckIn(pendingDeleteId);
+                  setPendingDeleteId(null);
+                }}
+                className="px-5 py-3 rounded-xl bg-red-600 text-white text-xs font-bold uppercase tracking-widest shadow-lg shadow-red-300/40 hover:bg-red-700"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {showCheckInModal && typeof document !== 'undefined' && createPortal(

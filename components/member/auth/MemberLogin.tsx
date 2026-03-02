@@ -7,9 +7,10 @@ interface MemberLoginProps {
   onLogin: (session: MemberSession) => void;
   onForgotPassword: () => void;
   onBackToLanding: () => void;
+  onApply: () => void;
 }
 
-const MemberLogin: React.FC<MemberLoginProps> = ({ onLogin, onForgotPassword, onBackToLanding }) => {
+const MemberLogin: React.FC<MemberLoginProps> = ({ onLogin, onForgotPassword, onBackToLanding, onApply }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -91,8 +92,22 @@ const MemberLogin: React.FC<MemberLoginProps> = ({ onLogin, onForgotPassword, on
           {isSubmitting ? 'Signing In...' : 'Sign In'}
         </Button>
 
-        <div className="text-center pt-4">
-          <button type="button" onClick={onBackToLanding} className="text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-zinc-900 transition-colors">
+        <div className="text-center pt-4 space-y-3">
+          <p className="text-zinc-500 text-sm">
+            Don't have an account?{' '}
+            <button
+              type="button"
+              onClick={onApply}
+              className="text-primary font-bold hover:underline"
+            >
+              Apply now
+            </button>
+          </p>
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-zinc-900 transition-colors"
+          >
             &larr; Back to Home
           </button>
         </div>

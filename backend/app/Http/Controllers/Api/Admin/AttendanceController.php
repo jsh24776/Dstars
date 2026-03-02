@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\Attendance\CheckInAttendanceRequest;
 use App\Http\Requests\Admin\Attendance\IndexAttendanceRequest;
 use App\Http\Requests\Admin\Attendance\IndexMemberAttendanceHistoryRequest;
 use App\Http\Resources\Admin\AttendanceResource;
+use App\Models\CheckIn;
 use App\Models\Member;
 use App\Services\Admin\AttendanceService;
 use Illuminate\Http\JsonResponse;
@@ -45,5 +46,12 @@ class AttendanceController extends ApiController
     public function summary(AttendanceSummaryRequest $request): JsonResponse
     {
         return $this->success($this->service->summary($request->validated()));
+    }
+
+    public function destroy(CheckIn $checkIn): JsonResponse
+    {
+        $checkIn->delete();
+
+        return $this->success([], 'Check-in deleted successfully.');
     }
 }

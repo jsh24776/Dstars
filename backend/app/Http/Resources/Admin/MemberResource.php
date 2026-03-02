@@ -16,7 +16,7 @@ class MemberResource extends JsonResource
     public function toArray(Request $request): array
     {
         $daysRemaining = null;
-        $membershipStatus = 'expired';
+        $membershipStatus = 'inactive';
 
         if ($this->membership_end_date) {
             $daysRemaining = now()->startOfDay()->diffInDays(
@@ -77,7 +77,7 @@ class MemberResource extends JsonResource
                     'check_in_time' => $this->latestCheckIn->check_in_time?->toIso8601String(),
                 ];
             }),
-            'is_inactive' => $membershipStatus === 'expired',
+            'is_inactive' => $membershipStatus !== 'active',
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

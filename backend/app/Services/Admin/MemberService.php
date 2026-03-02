@@ -3,25 +3,39 @@
 namespace App\Services\Admin;
 
 use App\Enums\MemberStatus;
+use App\Mail\MemberCredentialsMail;
 use App\Models\Member;
+use App\Services\Members\MembershipLifecycleService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class MemberService
 {
+    public function __construct(
+        protected MembershipLifecycleService $membershipLifecycleService
+    ) {
+    }
+
     public function create(array $data): Member
     {
         return DB::transaction(function () use ($data) {
+            $plainPassword = Str::password(12);
+
             $member = Member::create([
                 'full_name' => $data['full_name'],
                 'username' => $data['username'] ?? null,
                 'email' => strtolower($data['email']),
                 'phone' => $data['phone'],
+                'password' => $plainPassword,
                 'status' => $data['status'] ?? MemberStatus::Inactive,
                 'membership_plan_id' => $data['membership_plan_id'] ?? null,
                 'is_verified' => $data['is_verified'] ?? false,
+                'role' => 'member',
+                'is_active' => true,
+                'email_verified_at' => now(),
             ]);
 
             $member->forceFill([
@@ -33,6 +47,13 @@ class MemberService
                     'profile_image_path' => $this->storeAvatar($data['avatar']),
                 ])->save();
             }
+
+            // If an admin selected a plan, activate the membership (sets start & end dates)
+            if (! empty($data['membership_plan_id'])) {
+                $this->membershipLifecycleService->activate($member);
+            }
+
+            Mail::to($member->email)->send(new MemberCredentialsMail($member, $plainPassword));
 
             return $member;
         });
