@@ -330,25 +330,28 @@ const Attendance: React.FC = () => {
               <p className="text-sm text-zinc-400">Latest member check-in records.</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[520px] text-left border-collapse">
                 <thead>
                   <tr className="bg-zinc-50/30 border-b border-zinc-100">
-                    <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Member</th>
-                    <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Date</th>
-                    <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Time</th>
-                    <th className="px-8 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Action</th>
+                    <th className="px-6 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Member</th>
+                    <th className="px-6 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] whitespace-nowrap">Date</th>
+                    <th className="px-6 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] whitespace-nowrap">Time</th>
+                    <th className="px-6 py-5 text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] whitespace-nowrap text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-50">
                   {records.length > 0 ? (
                     records.map((record) => (
                       <tr key={record.id} className="group hover:bg-zinc-50/50 transition-colors">
-                        <td className="px-8 py-6 text-sm font-bold text-zinc-900">
+                        <td
+                          className="px-6 py-6 text-sm font-bold text-zinc-900 max-w-[240px] truncate"
+                          title={record.member?.full_name ?? `Member #${record.member_id}`}
+                        >
                           {record.member?.full_name ?? `Member #${record.member_id}`}
                         </td>
-                        <td className="px-8 py-6 text-sm text-zinc-500">{fmtDate(record.check_in_date)}</td>
-                        <td className="px-8 py-6 text-sm text-zinc-500">{fmtTime(record.check_in_time)}</td>
-                        <td className="px-8 py-6">
+                        <td className="px-6 py-6 text-sm text-zinc-500 whitespace-nowrap">{fmtDate(record.check_in_date)}</td>
+                        <td className="px-6 py-6 text-sm text-zinc-500 whitespace-nowrap">{fmtTime(record.check_in_time)}</td>
+                        <td className="px-6 py-6 whitespace-nowrap text-right">
                           <button
                             onClick={() => openDetails(record)}
                             className="px-3 py-2 rounded-xl border border-zinc-200 text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:bg-white transition-all"
@@ -360,7 +363,7 @@ const Attendance: React.FC = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-8 py-16 text-center text-sm font-medium text-zinc-400">
+                      <td colSpan={4} className="px-6 py-16 text-center text-sm font-medium text-zinc-400">
                         {isLoading ? 'Loading check-ins...' : 'No check-in records found.'}
                       </td>
                     </tr>

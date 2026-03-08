@@ -6,6 +6,13 @@ type PaymentStatus = 'recorded' | 'confirmed';
 
 type PaymentMethod = 'gcash' | 'maya' | 'cash' | 'bank_transfer';
 
+interface Member {
+  id: number;
+  full_name: string;
+  email: string;
+  membership_plan?: { name: string; price?: string | number } | null;
+}
+
 interface PaymentMember {
   id: number;
   full_name: string;
@@ -52,6 +59,16 @@ interface FinanceSummary {
   recent_payments: Payment[];
 }
 
+interface ApiEnvelope<T> {
+  data?: T;
+  message?: string;
+}
+
+const getCookie = (name: string) => {
+  const match = document.cookie.match(new RegExp(`(^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[2]) : '';
+};
+
 const formatCurrency = (value: string | number) => {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return 'PHP 0.00';
@@ -60,6 +77,8 @@ const formatCurrency = (value: string | number) => {
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+const toDateTimeLocal = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
 const paymentStatusLabel = (status: PaymentStatus) => {
   if (status === 'confirmed') return 'Captured';
@@ -84,12 +103,25 @@ const Payments: React.FC = () => {
   const [lastPage, setLastPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [activePayment, setActivePayment] = useState<Payment | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState<number | ''>('');
+  const [amount, setAmount] = useState('');
+  const [paidAt, setPaidAt] = useState(toDateTimeLocal(new Date()));
 
   const baseUrl = useMemo(
     () => (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000',
     []
+  );
+
+  const selectedMember = useMemo(
+    () => members.find((m) => m.id === selectedMemberId) ?? null,
+    [members, selectedMemberId]
   );
 
   const loadSummary = async () => {
@@ -109,6 +141,21 @@ const Payments: React.FC = () => {
       }
     } catch {
       // Silent
+    }
+  };
+
+  const loadMembers = async () => {
+    try {
+      const response = await fetch(`${baseUrl}/admin/api/members?per_page=100`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      });
+
+      if (!response.ok) throw new Error('Unable to load members.');
+      const payload = await response.json().catch(() => null);
+      setMembers(Array.isArray(payload?.data) ? payload.data : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load members.');
     }
   };
 
@@ -154,7 +201,7 @@ const Payments: React.FC = () => {
   }, [methodFilter, statusFilter]);
 
   useEffect(() => {
-    if (!showDetails || typeof document === 'undefined') return;
+    if ((!showDetails && !showCreate) || typeof document === 'undefined') return;
 
     const { body, documentElement } = document;
     const originalOverflow = body.style.overflow;
@@ -170,7 +217,14 @@ const Payments: React.FC = () => {
       body.style.overflow = originalOverflow;
       body.style.paddingRight = originalPaddingRight;
     };
-  }, [showDetails]);
+  }, [showDetails, showCreate]);
+
+  useEffect(() => {
+    if (notice) {
+      const t = setTimeout(() => setNotice(null), 2500);
+      return () => clearTimeout(t);
+    }
+  }, [notice]);
 
   const toggleMethodFilter = () => {
     setMethodFilter((current) => {
@@ -188,6 +242,71 @@ const Payments: React.FC = () => {
       if (current === 'confirmed') return 'recorded';
       return 'all';
     });
+  };
+
+  const openCreate = async () => {
+    setError(null);
+    setShowCreate(true);
+    setSelectedMemberId('');
+    setAmount('');
+    setPaidAt(toDateTimeLocal(new Date()));
+    await loadMembers();
+  };
+
+  useEffect(() => {
+    if (!selectedMember?.membership_plan) return;
+    if (amount.trim()) return;
+    const suggested = selectedMember.membership_plan.price ?? '';
+    if (suggested === '' || suggested === null || suggested === undefined) return;
+    setAmount(String(suggested));
+  }, [selectedMember, amount]);
+
+  const submitCreate = async () => {
+    setError(null);
+    if (!selectedMemberId) return setError('Member is required.');
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return setError('Amount must be greater than 0.');
+
+    setCreating(true);
+    try {
+      const xsrf = getCookie('XSRF-TOKEN');
+      const issuedAtIso = paidAt ? new Date(paidAt).toISOString() : undefined;
+      const description = selectedMember?.membership_plan?.name
+        ? `${selectedMember.membership_plan.name} Membership`
+        : 'Onsite Payment';
+
+      const response = await fetch(`${baseUrl}/admin/api/invoices`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(xsrf ? { 'X-XSRF-TOKEN': xsrf } : {}),
+        },
+        body: JSON.stringify({
+          member_id: selectedMemberId,
+          issued_at: issuedAtIso,
+          items: [{ description, quantity: 1, unit_price: numericAmount }],
+          discount_amount: 0,
+          tax_amount: 0,
+          payment_method: 'cash',
+          payment_status: 'paid',
+          notes: 'Onsite payment (front desk).',
+        }),
+      });
+
+      const payload: ApiEnvelope<{ invoice?: unknown }> = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.message ?? 'Unable to create payment.');
+
+      setShowCreate(false);
+      setNotice('Payment recorded as captured.');
+      await Promise.all([loadSummary(), loadPayments(1)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create payment.');
+    } finally {
+      setCreating(false);
+    }
   };
 
   const openDetails = async (payment: Payment) => {
@@ -291,14 +410,20 @@ const Payments: React.FC = () => {
           <p className="text-zinc-500 mt-1">Monitor cash flow, capture rates, and payment methods.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button className="px-6 py-3 bg-white border border-zinc-200 rounded-2xl text-[10px] font-bold text-zinc-600 hover:bg-zinc-50 transition-all uppercase tracking-widest">
-            Reconcile
-          </button>
-          <button className="px-6 py-3 bg-primary text-white rounded-2xl text-[10px] font-bold shadow-xl shadow-primary/20 hover:opacity-95 transition-all uppercase tracking-widest">
+          <button
+            onClick={openCreate}
+            className="px-6 py-3 bg-primary text-white rounded-2xl text-[10px] font-bold shadow-xl shadow-primary/20 hover:opacity-95 transition-all uppercase tracking-widest"
+          >
             Add Payment
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-6 py-4 text-sm font-semibold text-emerald-700">
+          {notice}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {summaryCards.map((card) => (
@@ -418,6 +543,98 @@ const Payments: React.FC = () => {
         <div className="rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-semibold text-red-600">
           {error}
         </div>
+      )}
+
+      {showCreate && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative z-[121] bg-white rounded-[2.5rem] border border-zinc-100 shadow-2xl w-full max-w-2xl p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-2xl font-black text-zinc-900">Add Payment</h3>
+                <p className="text-sm text-zinc-400">Records an onsite payment as captured.</p>
+              </div>
+              <button
+                onClick={() => setShowCreate(false)}
+                className="p-2 rounded-xl border border-zinc-200 text-zinc-400 hover:text-zinc-900"
+              >
+                X
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Member</label>
+                <select
+                  value={selectedMemberId}
+                  onChange={(e) => setSelectedMemberId(e.target.value ? Number(e.target.value) : '')}
+                  className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"
+                >
+                  <option value="">Select a member</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>{m.full_name} ({m.email})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Date</label>
+                <input
+                  type="datetime-local"
+                  value={paidAt}
+                  onChange={(e) => setPaidAt(e.target.value)}
+                  className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Method</label>
+                <input
+                  value="Onsite (Cash)"
+                  disabled
+                  className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm text-zinc-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</label>
+                <input
+                  value="Captured"
+                  disabled
+                  className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm text-zinc-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCreate(false)}
+                className="px-5 py-3 rounded-xl border border-zinc-200 text-xs font-bold uppercase tracking-widest text-zinc-500 hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitCreate}
+                disabled={creating}
+                className="px-6 py-3 rounded-xl bg-primary text-white text-xs font-bold uppercase tracking-widest shadow-lg shadow-primary/20 hover:opacity-95 disabled:opacity-50"
+              >
+                {creating ? 'Recording...' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {showDetails && activePayment && typeof document !== 'undefined' && createPortal(

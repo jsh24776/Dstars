@@ -48,6 +48,7 @@ class PaymentService
 
             $invoice->forceFill([
                 'status' => InvoiceStatus::Paid,
+                'payment_method' => strtolower($method),
             ])->save();
 
             if ($invoice->member) {

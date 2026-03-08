@@ -3,17 +3,19 @@ import { createPortal } from 'react-dom';
 import { consumeDashboardDeepLink, onDashboardDeepLink } from '../../services/dashboardDeepLink';
 
 type InvoiceStatus = 'pending' | 'paid' | 'cancelled';
-type PaymentMethod = 'cash' | 'gcash' | 'bank_transfer';
+type PaymentMethod = 'cash' | 'gcash';
 type PaymentSelection = 'paid' | 'unpaid';
 
-interface ItemForm { id: string; description: string; quantity: string; unitPrice: string; }
-interface Member { id: number; full_name: string; email: string; phone?: string; membership_plan?: { name: string; price?: string | number } | null; }
+interface ItemForm { id: string; planId: number | ''; unitPrice: string; }
+interface Member { id: number; full_name: string; email: string; phone?: string; membership_plan?: { id: number | null; name: string; price?: string | number } | null; }
+interface MembershipPlan { id: number; name: string; price: string | number; status?: 'active' | 'inactive' | string; }
 interface InvoiceItem { id?: number; description: string; quantity: number; unit_price: string | number; line_total: string | number; }
 interface Invoice {
   id: number; invoice_number: string; member_id: number; plan_name: string; total_amount: string | number; status: InvoiceStatus;
   issued_at: string; notes?: string | null; payment_method?: string | null;
   subtotal_amount?: string | number; discount_amount?: string | number; tax_amount?: string | number;
   member: Member | null; items?: InvoiceItem[];
+  payment?: { payment_method?: string | null } | null;
 }
 interface Paginated<T> { data: T[]; meta: { current_page: number; last_page: number; total: number; }; }
 interface ApiEnvelope<T> { data?: T; message?: string; }
@@ -26,7 +28,13 @@ const formatCurrency = (value: string | number) => `PHP ${(Number(value) || 0).t
 const formatDate = (value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const toDateTimeLocal = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const statusLabel = (s: InvoiceStatus) => (s === 'paid' ? 'Paid' : s === 'pending' ? 'Pending' : 'Cancelled');
-const paymentMethodLabel = (m?: string | null) => (m === 'gcash' ? 'GCash' : m === 'bank_transfer' ? 'Bank Transfer' : m === 'cash' ? 'Cash' : '-');
+const paymentMethodLabel = (m?: string | null) => (
+  m === 'gcash' ? 'GCash'
+    : m === 'maya' ? 'Maya'
+      : m === 'bank_transfer' ? 'Bank Transfer'
+        : m === 'cash' ? 'Onsite / Cash'
+          : '-'
+);
 
 const Invoices: React.FC = () => {
   const baseUrl = useMemo(() => (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000', []);
@@ -41,6 +49,7 @@ const Invoices: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<number | ''>('');
   const [issuedAt, setIssuedAt] = useState(toDateTimeLocal(new Date()));
   const [discountAmount, setDiscountAmount] = useState('0');
@@ -48,12 +57,12 @@ const Invoices: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentStatus, setPaymentStatus] = useState<PaymentSelection>('unpaid');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<ItemForm[]>([{ id: 'item-1', description: '', quantity: '1', unitPrice: '' }]);
+  const [items, setItems] = useState<ItemForm[]>([{ id: 'item-1', planId: '', unitPrice: '' }]);
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null);
 
   const selectedMember = useMemo(() => members.find((m) => m.id === selectedMemberId) ?? null, [members, selectedMemberId]);
   const totals = useMemo(() => {
-    const subtotal = items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
+    const subtotal = items.reduce((sum, i) => sum + (Number(i.unitPrice) || 0), 0);
     const discount = Number(discountAmount) || 0;
     const tax = Number(taxAmount) || 0;
     return { subtotal, discount, tax, grandTotal: Math.max(0, subtotal - discount + tax) };
@@ -81,6 +90,18 @@ const Invoices: React.FC = () => {
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load members.'); }
   };
 
+  const loadPlans = async () => {
+    try {
+      const r = await fetch(`${baseUrl}/admin/api/membership-plans?per_page=100&status=active`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      if (!r.ok) throw new Error('Unable to load membership plans.');
+      const payload = await r.json().catch(() => null);
+      setPlans(Array.isArray(payload?.data) ? payload.data : []);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load membership plans.'); }
+  };
+
   useEffect(() => { loadInvoices(1); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const link = consumeDashboardDeepLink('invoices', 'invoice');
@@ -100,17 +121,17 @@ const Invoices: React.FC = () => {
   }, []);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(null), 2500); return () => clearTimeout(t); } }, [notice]);
   useEffect(() => {
-    if (!selectedMember?.membership_plan?.name) return;
+    if (!selectedMember?.membership_plan?.id) return;
 
     setItems((current) => {
       if (current.length !== 1) return current;
       const row = current[0];
-      const isBlank = !row.description.trim() && !row.unitPrice.trim();
+      const isBlank = !row.unitPrice.trim() && !row.planId;
       if (!isBlank) return current;
 
       return [{
         ...row,
-        description: `${selectedMember.membership_plan.name} Membership`,
+        planId: selectedMember.membership_plan.id ?? '',
         unitPrice: String(selectedMember.membership_plan.price ?? ''),
       }];
     });
@@ -163,18 +184,35 @@ const Invoices: React.FC = () => {
 
   const openCreate = async () => {
     setShowCreate(true); setError(null); setSelectedMemberId(''); setIssuedAt(toDateTimeLocal(new Date())); setDiscountAmount('0');
-    setTaxAmount('0'); setPaymentMethod('cash'); setPaymentStatus('unpaid'); setNotes(''); setItems([{ id: `item-${Date.now()}`, description: '', quantity: '1', unitPrice: '' }]);
-    await loadMembers();
+    setTaxAmount('0'); setPaymentMethod('cash'); setPaymentStatus('unpaid'); setNotes(''); setItems([{ id: `item-${Date.now()}`, planId: '', unitPrice: '' }]);
+    await Promise.all([loadMembers(), loadPlans()]);
   };
 
-  const addRow = () => setItems((v) => [...v, { id: `item-${Date.now()}-${v.length}`, description: '', quantity: '1', unitPrice: '' }]);
+  const addRow = () => setItems((v) => [...v, { id: `item-${Date.now()}-${v.length}`, planId: '', unitPrice: '' }]);
   const removeRow = (id: string) => setItems((v) => (v.length > 1 ? v.filter((i) => i.id !== id) : v));
-  const updateRow = (id: string, k: keyof ItemForm, value: string) => setItems((v) => v.map((i) => (i.id === id ? { ...i, [k]: value } : i)));
+
+  const setRowPlan = (id: string, planId: number | '') => {
+    const plan = typeof planId === 'number' ? plans.find((p) => p.id === planId) : null;
+    setItems((v) => v.map((i) => (i.id === id ? { ...i, planId, unitPrice: plan ? String(plan.price ?? '') : i.unitPrice } : i)));
+  };
+
+  const updateRowUnitPrice = (id: string, value: string) => setItems((v) => v.map((i) => (i.id === id ? { ...i, unitPrice: value } : i)));
 
   const submitCreate = async () => {
     setError(null);
     if (!selectedMemberId) return setError('Member is required.');
-    const normalized = items.map((i) => ({ description: i.description.trim(), quantity: Number(i.quantity), unit_price: Number(i.unitPrice) })).filter((i) => i.description && i.quantity > 0 && i.unit_price >= 0);
+    if (items.some((i) => !i.planId)) return setError('Membership plan is required.');
+
+    const normalized = items.map((i) => {
+      const plan = plans.find((p) => p.id === i.planId) ?? null;
+      const unitPrice = Number(i.unitPrice || plan?.price || 0);
+      return {
+        description: `${plan?.name ?? 'Membership'} Membership`,
+        quantity: 1,
+        unit_price: unitPrice,
+      };
+    }).filter((i) => i.unit_price >= 0);
+
     if (!normalized.length) return setError('At least one valid invoice item is required.');
     setCreating(true);
     try {
@@ -210,12 +248,12 @@ const Invoices: React.FC = () => {
               <div><div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Date Issued</div><div className="mt-1 text-sm font-semibold text-zinc-900">{formatDate(detailInvoice.issued_at)}</div></div>
               <div><div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Status</div><div className="mt-1 text-sm font-semibold text-zinc-900">{statusLabel(detailInvoice.status)}</div></div>
               <div><div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Member</div><div className="mt-1 text-sm font-semibold text-zinc-900">{detailInvoice.member?.full_name ?? '-'}</div></div>
-              <div><div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Payment Method</div><div className="mt-1 text-sm font-semibold text-zinc-900">{paymentMethodLabel(detailInvoice.payment_method)}</div></div>
+              <div><div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Payment Method</div><div className="mt-1 text-sm font-semibold text-zinc-900">{paymentMethodLabel(detailInvoice.payment_method ?? detailInvoice.payment?.payment_method ?? null)}</div></div>
             </div>
             <div className="overflow-x-auto rounded-2xl border border-zinc-100">
               <table className="w-full text-left border-collapse">
-                <thead><tr className="bg-zinc-50/80 border-b border-zinc-100"><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Description</th><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Qty</th><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Unit Price</th><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Line Total</th></tr></thead>
-                <tbody>{(detailInvoice.items ?? []).map((i, idx) => <tr key={`${i.id ?? idx}`} className="border-b border-zinc-50 last:border-0"><td className="px-5 py-3 text-sm font-semibold text-zinc-800">{i.description}</td><td className="px-5 py-3 text-sm text-zinc-600">{i.quantity}</td><td className="px-5 py-3 text-sm text-zinc-600">{formatCurrency(i.unit_price)}</td><td className="px-5 py-3 text-sm font-semibold text-zinc-900">{formatCurrency(i.line_total)}</td></tr>)}</tbody>
+                <thead><tr className="bg-zinc-50/80 border-b border-zinc-100"><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Description</th><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Unit Price</th><th className="px-5 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Line Total</th></tr></thead>
+                <tbody>{(detailInvoice.items ?? []).map((i, idx) => <tr key={`${i.id ?? idx}`} className="border-b border-zinc-50 last:border-0"><td className="px-5 py-3 text-sm font-semibold text-zinc-800">{i.description}</td><td className="px-5 py-3 text-sm text-zinc-600">{formatCurrency(i.unit_price)}</td><td className="px-5 py-3 text-sm font-semibold text-zinc-900">{formatCurrency(i.line_total)}</td></tr>)}</tbody>
               </table>
             </div>
             {detailInvoice.notes ? <div className="rounded-2xl border border-zinc-100 bg-zinc-50/60 p-4"><div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Notes</div><div className="mt-2 text-sm text-zinc-700 whitespace-pre-wrap">{detailInvoice.notes}</div></div> : null}
@@ -276,12 +314,55 @@ const Invoices: React.FC = () => {
                 </div>
                 <div className="rounded-2xl border border-zinc-100 overflow-hidden">
                   <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50"><h4 className="text-sm font-black text-zinc-900">Invoice Items</h4><button onClick={addRow} className="px-3 py-2 rounded-xl bg-white border border-zinc-200 text-[10px] font-bold uppercase tracking-widest text-zinc-600 hover:bg-zinc-50">Add Row</button></div>
-                  <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="bg-zinc-50/30 border-b border-zinc-100"><th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Description</th><th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Quantity</th><th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Unit Price</th><th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Line Total</th><th className="px-4 py-3"></th></tr></thead><tbody>{items.map((i) => <tr key={i.id} className="border-b border-zinc-50 last:border-0"><td className="px-4 py-3"><input value={i.description} onChange={(e) => updateRow(i.id, 'description', e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-lg text-sm" /></td><td className="px-4 py-3 w-28"><input type="number" min="1" value={i.quantity} onChange={(e) => updateRow(i.id, 'quantity', e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-lg text-sm" /></td><td className="px-4 py-3 w-40"><input type="number" min="0" step="0.01" value={i.unitPrice} onChange={(e) => updateRow(i.id, 'unitPrice', e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-lg text-sm" /></td><td className="px-4 py-3 text-sm font-semibold text-zinc-900 w-40">{formatCurrency((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0))}</td><td className="px-4 py-3 text-right w-24"><button onClick={() => removeRow(i.id)} className="px-3 py-2 rounded-lg border border-zinc-200 text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:bg-zinc-50">Remove</button></td></tr>)}</tbody></table></div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-zinc-50/30 border-b border-zinc-100">
+                          <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Member Plan</th>
+                          <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Unit Price</th>
+                          <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Line Total</th>
+                          <th className="px-4 py-3"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((i) => (
+                          <tr key={i.id} className="border-b border-zinc-50 last:border-0">
+                            <td className="px-4 py-3">
+                              <select
+                                value={i.planId}
+                                onChange={(e) => setRowPlan(i.id, e.target.value ? Number(e.target.value) : '')}
+                                className="w-full px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-lg text-sm"
+                              >
+                                <option value="">Select a plan...</option>
+                                {plans.map((p) => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-4 py-3 w-40">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={i.unitPrice}
+                                onChange={(e) => updateRowUnitPrice(i.id, e.target.value)}
+                                className="w-full px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-lg text-sm"
+                              />
+                            </td>
+                            <td className="px-4 py-3 text-sm font-semibold text-zinc-900 w-40">{formatCurrency(Number(i.unitPrice) || 0)}</td>
+                            <td className="px-4 py-3 text-right w-24">
+                              <button onClick={() => removeRow(i.id)} className="px-3 py-2 rounded-lg border border-zinc-200 text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:bg-zinc-50">Remove</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
               <div className="space-y-5">
                 <div className="rounded-2xl border border-zinc-100 p-5 space-y-4"><h4 className="text-sm font-black text-zinc-900">Payment Summary</h4><div className="flex justify-between text-sm text-zinc-600"><span>Subtotal</span><span>{formatCurrency(totals.subtotal)}</span></div><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Discount</label><input type="number" min="0" step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm" /></div><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Tax</label><input type="number" min="0" step="0.01" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm" /></div><div className="pt-3 border-t border-zinc-100 flex justify-between"><span className="text-sm font-bold text-zinc-900">Grand Total</span><span className="text-lg font-black text-zinc-900">{formatCurrency(totals.grandTotal)}</span></div></div>
-                <div className="rounded-2xl border border-zinc-100 p-5 space-y-4"><h4 className="text-sm font-black text-zinc-900">Payment</h4><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Payment Method</label><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"><option value="cash">Cash</option><option value="gcash">GCash</option><option value="bank_transfer">Bank Transfer</option></select></div><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Payment Status</label><select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as PaymentSelection)} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"><option value="unpaid">Unpaid</option><option value="paid">Paid</option></select></div><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm resize-none" /></div></div>
+                <div className="rounded-2xl border border-zinc-100 p-5 space-y-4"><h4 className="text-sm font-black text-zinc-900">Payment</h4><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Payment Method</label><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"><option value="cash">Onsite / Cash</option><option value="gcash">GCash</option></select></div><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Payment Status</label><select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as PaymentSelection)} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm"><option value="unpaid">Unpaid</option><option value="paid">Paid</option></select></div><div><label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="mt-2 w-full px-4 py-3 bg-zinc-50 border border-zinc-100 rounded-xl text-sm resize-none" /></div></div>
               </div>
             </div>
             <div className="mt-8 flex justify-end gap-3"><button onClick={() => setShowCreate(false)} className="px-5 py-3 rounded-xl border border-zinc-200 text-xs font-bold uppercase tracking-widest text-zinc-500 hover:bg-zinc-50">Cancel</button><button onClick={submitCreate} disabled={creating} className="px-6 py-3 rounded-xl bg-primary text-white text-xs font-bold uppercase tracking-widest shadow-lg shadow-primary/20 hover:opacity-95 disabled:opacity-50">{creating ? 'Generating...' : 'Generate Invoice'}</button></div>
