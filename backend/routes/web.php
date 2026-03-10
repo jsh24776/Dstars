@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Admin\MembershipPlanController as AdminMembershipPl
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Api\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Api\Admin\ActivityLogController as AdminActivityLogController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('admin')->group(function () {
@@ -38,6 +39,7 @@ Route::prefix('admin/api')
         Route::get('/payments', [AdminPaymentController::class, 'index']);
         Route::get('/payments/{payment}', [AdminPaymentController::class, 'show']);
         Route::get('/finance-summary', [AdminFinanceController::class, 'summary']);
+        Route::get('/activity-logs', [AdminActivityLogController::class, 'index']);
         Route::get('/membership-plans', [AdminMembershipPlanController::class, 'index']);
         Route::post('/membership-plans', [AdminMembershipPlanController::class, 'store']);
         Route::get('/membership-plans/{membershipPlan}', [AdminMembershipPlanController::class, 'show']);

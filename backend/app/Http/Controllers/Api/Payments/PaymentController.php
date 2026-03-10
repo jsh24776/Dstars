@@ -25,7 +25,10 @@ class PaymentController extends ApiController
         }
 
         try {
-            $payment = $this->service->recordPayment($invoice, $validated['payment_method']);
+            $actorType = ! empty($validated['member_id']) ? 'member' : null;
+            $actorId = ! empty($validated['member_id']) ? (int) $validated['member_id'] : null;
+
+            $payment = $this->service->recordPayment($invoice, $validated['payment_method'], $actorType, $actorId);
         } catch (\RuntimeException $exception) {
             return $this->error($exception->getMessage(), 422);
         }

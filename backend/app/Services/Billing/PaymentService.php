@@ -2,11 +2,11 @@
 
 namespace App\Services\Billing;
 
-use App\Enums\InvoiceStatus;
-use App\Enums\PaymentStatus;
+use App\Models\ActivityLog;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\Members\MembershipLifecycleService;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class PaymentService
@@ -15,52 +15,53 @@ class PaymentService
     {
     }
 
-    public function recordPayment(Invoice $invoice, string $method): Payment
-    {
-        return DB::transaction(function () use ($invoice, $method) {
-            $invoice = Invoice::query()
-                ->with('member.membershipPlan')
-                ->whereKey($invoice->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if ($invoice->status === InvoiceStatus::Paid) {
-                throw new \RuntimeException('Invoice is already marked as paid.');
+    public function recordPayment(
+        Invoice $invoice,
+        string $method,
+        ?string $actorType = null,
+        ?int $actorId = null
+    ): Payment {
+        return DB::transaction(function () use ($invoice, $method, $actorType, $actorId) {
+            try {
+                $result = DB::select('CALL sp_record_payment(?, ?, ?, ?, ?)', [
+                    $invoice->id,
+                    $method,
+                    now(),
+                    $actorType,
+                    $actorId,
+                ]);
+            } catch (QueryException $exception) {
+                $message = $exception->errorInfo[2] ?? 'Payment could not be recorded.';
+                throw new \RuntimeException($message, previous: $exception);
             }
 
-            if ($invoice->payment()->exists()) {
-                throw new \RuntimeException('Payment already recorded for this invoice.');
+            $paymentId = (int) (($result[0]->payment_id ?? 0));
+
+            if (! $paymentId) {
+                throw new \RuntimeException('Payment could not be recorded.');
             }
 
-            $payment = Payment::create([
-                'payment_reference' => null,
-                'invoice_id' => $invoice->id,
-                'member_id' => $invoice->member_id,
-                'amount_paid' => $invoice->total_amount,
-                'payment_method' => strtolower($method),
-                'payment_status' => PaymentStatus::Confirmed,
-                'paid_at' => now(),
+            $payment = Payment::query()
+                ->with('invoice.member.membershipPlan')
+                ->findOrFail($paymentId);
+
+            if ($payment->invoice?->member) {
+                $this->membershipLifecycleService->activate($payment->invoice->member, $payment->paid_at?->copy());
+            }
+
+            ActivityLog::create([
+                'actor_type' => $actorType,
+                'actor_id' => $actorId,
+                'action' => 'membership_activated_after_payment',
+                'entity_type' => 'member',
+                'entity_id' => $payment->invoice?->member_id,
+                'details' => [
+                    'payment_id' => $payment->id,
+                    'invoice_id' => $payment->invoice_id,
+                ],
             ]);
 
-            $payment->forceFill([
-                'payment_reference' => $this->formatPaymentReference($payment->id),
-            ])->save();
-
-            $invoice->forceFill([
-                'status' => InvoiceStatus::Paid,
-                'payment_method' => strtolower($method),
-            ])->save();
-
-            if ($invoice->member) {
-                $this->membershipLifecycleService->activate($invoice->member, $payment->paid_at?->copy());
-            }
-
-            return $payment->refresh();
+            return $payment;
         });
-    }
-
-    protected function formatPaymentReference(int $id): string
-    {
-        return 'DSTARS-PAY-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
     }
 }

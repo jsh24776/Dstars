@@ -27,7 +27,10 @@ class FinanceSummaryService
         $paidAmount = Invoice::where('status', InvoiceStatus::Paid)->sum('total_amount');
         $pendingAmount = Invoice::where('status', InvoiceStatus::Pending)->sum('total_amount');
 
-        $activeMembers = Member::where('status', MemberStatus::Active)->count();
+        $activeMembers = Member::query()
+            ->whereNotNull('membership_end_date')
+            ->whereDate('membership_end_date', '>', $now->toDateString())
+            ->count();
 
         $recentPayments = Payment::with(['member', 'invoice'])
             ->where('payment_status', $paidStatus)

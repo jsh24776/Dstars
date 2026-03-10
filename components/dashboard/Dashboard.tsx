@@ -1,6 +1,175 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { fetchAdminAttendanceSummary } from '../../services/attendanceService';
+
+interface FinanceSummary {
+  total_revenue: string | number;
+  revenue_this_month: string | number;
+  paid_amount: string | number;
+  pending_amount: string | number;
+  active_members: number;
+  recent_payments: unknown[];
+}
+
+interface ActivityLogItem {
+  id: number;
+  actor_type: string | null;
+  actor_id: number | null;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  details: any;
+  created_at: string | null;
+}
+
+interface ApiEnvelope<T> {
+  data?: T;
+  message?: string;
+}
+
+const formatCurrency = (value: string | number) => {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return 'PHP 0.00';
+  return `PHP ${numeric.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const timeAgo = (value: string | null) => {
+  if (!value) return '';
+  const diffMs = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(diffMs)) return '';
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+};
+
+const labelForActivity = (log: ActivityLogItem) => {
+  const action = log.action;
+  if (action === 'payment_recorded') return 'Payment recorded';
+  if (action === 'invoice_created') return 'Invoice created';
+  if (action === 'invoice_cancelled') return 'Invoice cancelled';
+  if (action === 'member_profile_updated') return 'Member profile updated';
+  if (action === 'member_password_updated') return 'Member password updated';
+  if (action === 'membership_activated_after_payment') return 'Membership activated';
+  return action.replace(/_/g, ' ');
+};
+
+const detailForActivity = (log: ActivityLogItem) => {
+  const d = log.details ?? {};
+
+  if (log.action === 'payment_recorded') {
+    const amount = d?.amount_paid ?? d?.amount ?? null;
+    const invoiceId = d?.invoice_id ?? null;
+    const method = d?.payment_method ?? null;
+    const parts = [
+      invoiceId ? `Invoice #${invoiceId}` : null,
+      amount != null ? formatCurrency(amount) : null,
+      method ? String(method).toUpperCase() : null,
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
+  if (log.action === 'invoice_created') {
+    const total = d?.total_amount ?? null;
+    const memberId = d?.member_id ?? null;
+    const parts = [memberId ? `Member #${memberId}` : null, total != null ? formatCurrency(total) : null].filter(Boolean);
+    return parts.join(' · ');
+  }
+
+  if (log.action === 'invoice_cancelled') {
+    const invoiceNumber = d?.invoice_number ?? null;
+    const memberId = d?.member_id ?? null;
+    const parts = [
+      invoiceNumber ? String(invoiceNumber) : (log.entity_id ? `Invoice #${log.entity_id}` : null),
+      memberId ? `Member #${memberId}` : null,
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
+  return `${log.entity_type}${log.entity_id ? ` #${log.entity_id}` : ''}`;
+};
 
 const Dashboard: React.FC = () => {
+  const [financeSummary, setFinanceSummary] = useState<FinanceSummary | null>(null);
+  const [attendanceToday, setAttendanceToday] = useState<number | null>(null);
+  const [activity, setActivity] = useState<ActivityLogItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const baseUrl = useMemo(
+    () => (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000',
+    []
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setIsLoading(true);
+
+      try {
+        const [financeRes, attendanceRes, activityRes] = await Promise.all([
+          fetch(`${baseUrl}/admin/api/finance-summary`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          }).then((r) => (r.ok ? r.json() : null)),
+          fetchAdminAttendanceSummary(),
+          fetch(`${baseUrl}/admin/api/activity-logs?per_page=8`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          }).then((r) => (r.ok ? r.json() : null)),
+        ]);
+
+        if (cancelled) return;
+
+        const financePayload = financeRes as ApiEnvelope<FinanceSummary> | null;
+        setFinanceSummary(financePayload?.data ?? null);
+
+        setAttendanceToday(attendanceRes?.today_total_check_ins ?? 0);
+
+        const activityPayload = activityRes as ApiEnvelope<{ items: ActivityLogItem[] }> | null;
+        setActivity(Array.isArray(activityPayload?.data?.items) ? activityPayload!.data!.items : []);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl]);
+
+  const activeMembersValue = financeSummary
+    ? financeSummary.active_members.toLocaleString()
+    : isLoading
+      ? '—'
+      : '0';
+
+  const monthlyRevenueValue = financeSummary
+    ? formatCurrency(financeSummary.revenue_this_month)
+    : isLoading
+      ? '—'
+      : formatCurrency(0);
+
+  const attendanceTodayValue = attendanceToday !== null
+    ? attendanceToday.toLocaleString()
+    : isLoading
+      ? '—'
+      : '0';
+
+  const dynamicRecentActivity = useMemo(
+    () =>
+      activity.map((log) => ({
+        label: labelForActivity(log),
+        detail: detailForActivity(log),
+        time: timeAgo(log.created_at),
+        tone: 'bg-zinc-100 text-zinc-600 border-zinc-200',
+      })),
+    [activity]
+  );
   const stats = [
     { label: 'Active Members', value: '1,284', trend: '+4.6%', icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg> },
     { label: 'Monthly Revenue', value: '₱142,500', trend: '+8.4%', icon: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
@@ -36,7 +205,15 @@ const Dashboard: React.FC = () => {
                 {stat.trend}
               </span>
             </div>
-            <div className="text-4xl font-black text-zinc-900 mb-2">{stat.value}</div>
+            <div className="text-4xl font-black text-zinc-900 mb-2">
+              {stat.label === 'Active Members'
+                ? activeMembersValue
+                : stat.label === 'Monthly Revenue'
+                  ? monthlyRevenueValue
+                  : stat.label === 'Attendance Today'
+                    ? attendanceTodayValue
+                    : stat.value}
+            </div>
             <div className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">{stat.label}</div>
           </div>
         ))}
@@ -125,7 +302,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {recentActivity.map((item, i) => (
+            {dynamicRecentActivity.length ? dynamicRecentActivity.map((item, i) => (
               <div key={i} className="flex items-center justify-between bg-zinc-50/60 border border-zinc-100 rounded-2xl px-6 py-4">
                 <div className="flex items-center space-x-4">
                   <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${item.tone}`}>
@@ -138,7 +315,9 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{item.time}</div>
               </div>
-            ))}
+            )) : (
+              <div className="text-sm text-zinc-400 font-medium">No activity logs yet.</div>
+            )}
           </div>
         </div>
 

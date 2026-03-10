@@ -3,6 +3,7 @@
 namespace App\Services\Billing;
 
 use App\Enums\InvoiceStatus;
+use App\Models\ActivityLog;
 use App\Models\Invoice;
 use App\Models\Member;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +43,19 @@ class InvoiceService
             $invoice->forceFill([
                 'invoice_number' => $this->formatInvoiceNumber($invoice->id),
             ])->save();
+
+            ActivityLog::create([
+                'actor_type' => 'member',
+                'actor_id' => $member->id,
+                'action' => 'invoice_created',
+                'entity_type' => 'invoice',
+                'entity_id' => $invoice->id,
+                'details' => [
+                    'total_amount' => $total,
+                    'registration_fee' => $registrationFee,
+                    'plan_price' => $planPrice,
+                ],
+            ]);
 
             return $invoice->refresh();
         });

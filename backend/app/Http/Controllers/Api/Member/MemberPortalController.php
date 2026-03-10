@@ -7,6 +7,7 @@ use App\Http\Requests\Member\UpdateMemberProfileRequest;
 use App\Http\Requests\Member\UpdateMemberPasswordRequest;
 use App\Http\Resources\Member\MemberProfileResource;
 use App\Http\Resources\InvoiceResource;
+use App\Models\ActivityLog;
 use App\Models\Member;
 use App\Models\MembershipPlan;
 use App\Models\CheckIn;
@@ -116,6 +117,15 @@ class MemberPortalController extends ApiController
         $member = Member::where('email', $user->email)->firstOrFail();
         
         $validated = $request->validated();
+        $changes = [];
+
+        if (($validated['full_name'] ?? null) !== null && $validated['full_name'] !== $member->full_name) {
+            $changes['full_name'] = [$member->full_name, $validated['full_name']];
+        }
+
+        if (array_key_exists('phone', $validated) && $validated['phone'] !== $member->phone) {
+            $changes['phone'] = [$member->phone, $validated['phone']];
+        }
         
         // Update user name
         $user->update([
@@ -126,6 +136,17 @@ class MemberPortalController extends ApiController
         $member->update([
             'full_name' => $validated['full_name'],
             'phone' => $validated['phone'] ?? $member->phone,
+        ]);
+
+        ActivityLog::create([
+            'actor_type' => 'member',
+            'actor_id' => $member->id,
+            'action' => 'member_profile_updated',
+            'entity_type' => 'member',
+            'entity_id' => $member->id,
+            'details' => [
+                'changes' => $changes,
+            ],
         ]);
         
         return $this->success([
@@ -304,6 +325,7 @@ class MemberPortalController extends ApiController
     public function updatePassword(UpdateMemberPasswordRequest $request): JsonResponse
     {
         $user = $request->user();
+        $member = Member::where('email', $user->email)->firstOrFail();
         $validated = $request->validated();
         
         // Verify current password
@@ -314,6 +336,15 @@ class MemberPortalController extends ApiController
         // Update password
         $user->update([
             'password' => Hash::make($validated['new_password']),
+        ]);
+
+        ActivityLog::create([
+            'actor_type' => 'member',
+            'actor_id' => $member->id,
+            'action' => 'member_password_updated',
+            'entity_type' => 'member',
+            'entity_id' => $member->id,
+            'details' => null,
         ]);
         
         return $this->success([], 'Password updated successfully.');

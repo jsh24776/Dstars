@@ -3,15 +3,17 @@
 namespace App\Services\Admin;
 
 use App\Enums\InvoiceStatus;
-use App\Enums\PaymentStatus;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Member;
 use App\Models\Payment;
+use App\Models\ActivityLog;
 use App\Services\Members\MembershipLifecycleService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class InvoiceService
 {
@@ -22,6 +24,10 @@ class InvoiceService
     public function create(array $payload): Invoice
     {
         return DB::transaction(function () use ($payload) {
+            $issuedAt = ! empty($payload['issued_at'])
+                ? Carbon::parse($payload['issued_at'])
+                : now();
+
             $member = Member::query()
                 ->with('membershipPlan')
                 ->lockForUpdate()
@@ -52,9 +58,7 @@ class InvoiceService
             $grandTotal = round(max(0, $subtotal - $discount + $tax), 2);
 
             $planPrice = (float) $member->membershipPlan->price;
-            $status = $payload['payment_status'] === 'paid'
-                ? InvoiceStatus::Paid
-                : InvoiceStatus::Pending;
+            $shouldAutoPay = ($payload['payment_status'] ?? null) === 'paid';
 
             $invoice = Invoice::create([
                 'invoice_number' => null,
@@ -66,10 +70,10 @@ class InvoiceService
                 'discount_amount' => $discount,
                 'tax_amount' => $tax,
                 'total_amount' => $grandTotal,
-                'status' => $status,
-                'payment_method' => $payload['payment_method'],
+                'status' => InvoiceStatus::Pending,
+                'payment_method' => $payload['payment_method'] ?? null,
                 'notes' => $payload['notes'] ?? null,
-                'issued_at' => $payload['issued_at'] ?? now(),
+                'issued_at' => $issuedAt,
             ]);
 
             $invoice->forceFill([
@@ -86,22 +90,49 @@ class InvoiceService
                 ]);
             }
 
-            if ($status === InvoiceStatus::Paid) {
-                $payment = Payment::create([
-                    'payment_reference' => null,
-                    'invoice_id' => $invoice->id,
+            ActivityLog::create([
+                'actor_type' => 'system',
+                'actor_id' => null,
+                'action' => 'invoice_created',
+                'entity_type' => 'invoice',
+                'entity_id' => $invoice->id,
+                'details' => [
                     'member_id' => $member->id,
-                    'amount_paid' => $grandTotal,
-                    'payment_method' => $payload['payment_method'],
-                    'payment_status' => PaymentStatus::Confirmed,
-                    'paid_at' => $payload['issued_at'] ?? now(),
-                ]);
+                    'total_amount' => $grandTotal,
+                    'payment_status' => $payload['payment_status'] ?? null,
+                ],
+            ]);
 
-                $payment->forceFill([
-                    'payment_reference' => $this->formatPaymentReference($payment->id),
-                ])->save();
+            if ($shouldAutoPay) {
+                try {
+                    $result = DB::select('CALL sp_record_payment(?, ?, ?, ?, ?)', [
+                        $invoice->id,
+                        $payload['payment_method'],
+                        $issuedAt->format('Y-m-d H:i:s'),
+                        'system',
+                        null,
+                    ]);
+                } catch (QueryException $exception) {
+                    $message = $exception->errorInfo[2] ?? 'Payment could not be recorded.';
+                    throw new \RuntimeException($message, previous: $exception);
+                }
+
+                $paymentId = (int) (($result[0]->payment_id ?? 0));
+                $payment = Payment::findOrFail($paymentId);
 
                 $this->membershipLifecycleService->activate($member, $payment->paid_at?->copy());
+
+                ActivityLog::create([
+                    'actor_type' => 'system',
+                    'actor_id' => null,
+                    'action' => 'membership_activated_after_payment',
+                    'entity_type' => 'member',
+                    'entity_id' => $member->id,
+                    'details' => [
+                        'payment_id' => $payment->id,
+                        'invoice_id' => $invoice->id,
+                    ],
+                ]);
             }
 
             return $invoice->refresh();
@@ -126,17 +157,40 @@ class InvoiceService
 
     public function cancel(Invoice $invoice): Invoice
     {
-        if ($invoice->status === InvoiceStatus::Paid) {
-            throw new \RuntimeException('Paid invoices cannot be cancelled.');
-        }
+        return DB::transaction(function () use ($invoice) {
+            $invoice = Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($invoice->status === InvoiceStatus::Cancelled) {
-            return $invoice;
-        }
+            if ($invoice->status === InvoiceStatus::Paid) {
+                throw new \RuntimeException('Paid invoices cannot be cancelled.');
+            }
 
-        $invoice->forceFill(['status' => InvoiceStatus::Cancelled])->save();
+            if ($invoice->payment()->exists()) {
+                throw new \RuntimeException('Invoices with payments cannot be cancelled.');
+            }
 
-        return $invoice->refresh();
+            if ($invoice->status === InvoiceStatus::Cancelled) {
+                return $invoice->refresh();
+            }
+
+            $invoice->forceFill(['status' => InvoiceStatus::Cancelled])->save();
+
+            ActivityLog::create([
+                'actor_type' => 'system',
+                'actor_id' => null,
+                'action' => 'invoice_cancelled',
+                'entity_type' => 'invoice',
+                'entity_id' => $invoice->id,
+                'details' => [
+                    'member_id' => $invoice->member_id,
+                    'invoice_number' => $invoice->invoice_number,
+                ],
+            ]);
+
+            return $invoice->refresh();
+        });
     }
 
     /**
@@ -188,8 +242,5 @@ class InvoiceService
         return 'DSTARS-INV-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
     }
 
-    protected function formatPaymentReference(int $id): string
-    {
-        return 'DSTARS-PAY-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
-    }
+    // Payment references are generated inside the database (procedure/trigger).
 }
